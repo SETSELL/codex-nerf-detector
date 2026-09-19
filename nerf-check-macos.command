@@ -8,9 +8,9 @@
 #  FIRST RUN ON macOS:
 #    Gatekeeper blocks downloaded shell scripts. Either
 #      - right-click this file -> Open -> Open, or
-#      - run:  xattr -d com.apple.quarantine "run-check.command"
+#      - run:  xattr -d com.apple.quarantine "nerf-check-macos.command"
 #    and if it is still not executable:
-#      - run:  chmod +x run-check.command nerf-check.sh
+#      - run:  chmod +x nerf-check-macos.command nerf-check.sh
 #
 #  NOTE: this launcher has NOT been tested on a real Mac.
 #  It is written against the documented macOS paths and is meant

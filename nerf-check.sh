@@ -55,6 +55,33 @@ Reply with only n.'
 PROBE_PROMPT="${PROBE_PROMPT:-$DEFAULT_PROMPT}"
 
 # ------------------------------------------------------------
+# Colour
+# ------------------------------------------------------------
+# Only on a terminal, and never when NO_COLOR is set - the escape codes
+# would otherwise land in piped output and in the record file.
+#   https://no-color.org
+if [ -t 1 ] && [ -z "${NO_COLOR:-}" ]; then
+    C_OK=$'\033[32m'      # full strength
+    C_WARN=$'\033[33m'    # diluted
+    C_BAD=$'\033[31m'     # downgraded
+    C_OFF=$'\033[0m'
+else
+    C_OK=""; C_WARN=""; C_BAD=""; C_OFF=""
+fi
+
+# Colour for a grade code. The codes themselves are not shown to the user
+# any more - the word alone is clearer than "[XX] 降智" - but they are what
+# the verdict is keyed on internally and in check-records.txt.
+grade_colour() {
+    case "$1" in
+        OK)   echo "$C_OK" ;;
+        "!!") echo "$C_WARN" ;;
+        XX)   echo "$C_BAD" ;;
+        *)    echo "" ;;
+    esac
+}
+
+# ------------------------------------------------------------
 # Portability helpers (Windows Git Bash / macOS / Linux)
 # ------------------------------------------------------------
 
@@ -807,9 +834,9 @@ result_header() {
     echo "  --------------------------------------------------------------------------------------------------"
 }
 
-# result_row <requested> <served> <reasoning-tokens> <elapsed-seconds> <verdict> <effort> [extra]
+# result_row <requested> <served> <tokens> <elapsed> <grade> <verdict> <effort> [extra]
 result_row() {
-    local m="$1" got="$2" rtok="$3" el="$4" vd="$5" ef="$6" extra="$7"
+    local m="$1" got="$2" rtok="$3" el="$4" gd="$5" vd="$6" ef="$7" extra="$8"
     local rank name note wr gr wl gl
 
     rank=$(tier_rank "$m"); [ -n "$rank" ] || rank="?"
@@ -821,7 +848,8 @@ result_row() {
     pad "${rtok:-?} $T_TOK" 12; printf " "
     pad "${got:--}" 20;         printf " "
     pad "${el:-?}$T_SEC" 7;     printf " "
-    printf "%s\n" "${vd:--}"
+    # Last column, so colour codes here cannot disturb any padding.
+    printf "%s%s%s\n" "$(grade_colour "$gd")" "${vd:--}" "$C_OFF"
 
     note=$(tier_name "$m")
     # 2070 is the highest step of the documented staircase, so anything
@@ -1046,11 +1074,11 @@ show_one_result() {
     [ -n "$R_RESET_TXT" ] && echo "  $T_RESET      : $R_RESET_TXT"
     echo
     result_header
-    result_row "$R_WANTED" "$R_GOT" "$R_RTOK" "$R_ELAPSED" "[$R_MARK] $R_VERDICT" "$PROBE_EFFORT"
+    result_row "$R_WANTED" "$R_GOT" "$R_RTOK" "$R_ELAPSED" "$R_MARK" "$R_VERDICT" "$PROBE_EFFORT"
     echo "--------------------------------------------------"
     echo
     echo "================================================================================"
-    echo "  $T_RESULT : [${R_MARK}] ${R_VERDICT}"
+    echo "  $T_RESULT : $(grade_colour "$R_MARK")${R_VERDICT}${C_OFF}"
     echo "================================================================================"
     echo
     echo "  $T_BASIS"
@@ -1181,7 +1209,7 @@ case "$ACT" in
         if run_one_model "$TESTMODEL"; then
             if [ "$NL" -gt 1 ]; then
                 result_row "$R_WANTED" "$R_GOT" "$R_RTOK" "$R_ELAPSED" \
-                           "[$R_MARK] $R_VERDICT" "$e"
+                           "$R_MARK" "$R_VERDICT" "$e"
             else
                 show_one_result
                 echo "  $T_RECORD : $RECORD"
@@ -1189,7 +1217,8 @@ case "$ACT" in
         else
             ANYFAIL=1
             if [ "$NL" -gt 1 ]; then
-                result_row "$TESTMODEL" "${R_VERDICT:-?}" "" "$R_ELAPSED" "--" "$e"
+                result_row "$TESTMODEL" "${R_VERDICT:-?}" "" "$R_ELAPSED" \
+                           "--" "${R_VERDICT:-?}" "$e"
             else
                 echo "  [ERROR] $T_ERR_REQUEST $?$T_ERR_CLOSE"
                 echo
@@ -1275,12 +1304,13 @@ case "$ACT" in
             fi
             lastrtok="$R_RTOK"; lastelapsed="$R_ELAPSED"
             record_one
-            [ -t 1 ] || printf "[%s] %s\n" "$lastmark" "$lastverdict"
+            [ -t 1 ] || printf "%s%s%s\n" "$(grade_colour "$lastmark")" "$lastverdict" "$C_OFF"
         done
 
         # On a terminal the live line gets wiped, so leave a permanent one.
         if [ -t 1 ]; then
-            printf "  [%d/%d] %-20s [%s] %s" "$i" "$NMODELS" "$m" "$lastmark" "$lastverdict"
+            printf "  [%d/%d] %-20s %s%s%s" "$i" "$NMODELS" "$m" \
+                   "$(grade_colour "$lastmark")" "$lastverdict" "$C_OFF"
             [ "$REPEATS" -gt 1 ] && printf "  (%d/%d OK)" "$hit" "$tot"
             echo
         fi
@@ -1306,7 +1336,7 @@ case "$ACT" in
             sx="${SUM_HIT[$j]}/${SUM_TOT[$j]} OK"
         fi
         result_row "${SUM_W[$j]}" "${SUM_G[$j]}" "${SUM_R[$j]}" "${SUM_E[$j]}" \
-                   "[${SUM_M[$j]}] ${SUM_V[$j]}" "$CFGEFFORT" "$sx"
+                   "${SUM_M[$j]}" "${SUM_V[$j]}" "$CFGEFFORT" "$sx"
     done
     echo "================================================================================"
     echo

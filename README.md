@@ -4,12 +4,13 @@
 >
 > **检测你的 Codex 请求有没有被悄悄换成更弱的模型。**
 
-Windows · 免安装 · 一个双击 · 一份回执
+Windows / macOS · 免安装 · 一个双击 · 一份回执
 
 ---
 
 ## 目录 / Table of Contents
 
+- [文件说明](#文件说明--files)
 - [这是什么（中文）](#这是什么中文)
 - [为什么会有这个东西](#为什么会有这个东西)
 - [它检测什么](#它检测什么)
@@ -30,9 +31,27 @@ Windows · 免安装 · 一个双击 · 一份回执
 
 ---
 
+## 文件说明 / Files
+
+| 文件 | 平台 | 说明 |
+|---|---|---|
+| `nerf-check.sh` | 全部 | **本体**。检测逻辑全在这里，两个启动器都只是调用它 |
+| `nerf-check-windows.bat` | Windows | 双击入口。负责找到 Git Bash，再运行本体 |
+| `nerf-check-macos.command` | macOS | 双击入口。用系统自带 bash 运行本体 |
+| `README.md` | — | 本文档 |
+| `LICENSE` | — | 许可证 |
+| `check-records.txt` | — | 运行后生成。检测记录。**含你的账号邮箱，已在 `.gitignore` 里，不要提交** |
+| `bash-path.txt` | Windows | 可选。Git Bash 装在非常规位置时，在这里写一行 `bash.exe` 的完整路径 |
+
+**文件名一律用英文。** 中文文件名在不同系统、不同压缩工具、不同代码页下会出现乱码或找不到文件的问题——而「永远只在英文 Windows 上、只用一种解压工具」不是能指望的前提。
+
+两个启动器做的事都很薄：找到正确的 bash、确保本体在旁边、把它跑起来。**所有逻辑都在 `nerf-check.sh`**，所以三端的检测结果完全一致。
+
+---
+
 ## 这是什么（中文）
 
-`Codex Nerf Detector` 是一个 Windows 上的小工具，用来回答一个很具体的问题：
+`Codex Nerf Detector` 是一个 Windows / macOS 上的小工具，用来回答一个很具体的问题：
 
 > **我选了 gpt-6-astra，OpenAI 到底是用哪个模型回我的？**
 
@@ -276,7 +295,7 @@ grep -oE '"object":"response"[^}]{0,600}' 日志 \
 
 | 项目 | Windows | macOS |
 |---|---|---|
-| 双击入口 | `run-check.bat` | `run-check.command` |
+| 双击入口 | `nerf-check-windows.bat` | `nerf-check-macos.command` |
 | 必需 | **Codex 桌面版** 或 **Codex CLI**，已登录 | 同左 |
 | 必需 | **Git for Windows**（提供 `bash.exe`） | 系统自带 bash，无需额外安装 |
 
@@ -290,13 +309,13 @@ grep -oE '"object":"response"[^}]{0,600}' 日志 \
 
 ```bash
 # 去掉隔离标记
-xattr -d com.apple.quarantine "run-check.command"
+xattr -d com.apple.quarantine "nerf-check-macos.command"
 
 # 如果提示"没有执行权限"
-chmod +x run-check.command nerf-check.sh
+chmod +x nerf-check-macos.command nerf-check.sh
 ```
 
-**或者**：右键 `run-check.command` → 打开 → 再点"打开"。
+**或者**：右键 `nerf-check-macos.command` → 打开 → 再点"打开"。
 
 **Codex 的查找位置**（按顺序）：
 
@@ -316,7 +335,7 @@ chmod +x run-check.command nerf-check.sh
 
 ### 方式一：双击（推荐）
 
-双击 `run-check.bat`，然后按提示走：
+双击 `nerf-check-windows.bat`，然后按提示走：
 
 ```
 1. 选语言             中文 / English
@@ -374,8 +393,8 @@ chmod +x run-check.command nerf-check.sh
 ### 方式二：带参数
 
 ```
-run-check.bat gpt-6-astra
-run-check.bat gpt-5.6-sol
+nerf-check-windows.bat gpt-6-astra
+nerf-check-windows.bat gpt-5.6-sol
 ```
 
 跳过菜单，直接测指定模型。适合批量测或者做快捷方式。
@@ -956,7 +975,7 @@ Two models served one request. That is neither "fine" nor "fully swapped", so it
 
 | | Windows | macOS |
 |---|---|---|
-| Launcher | `run-check.bat` | `run-check.command` |
+| Launcher | `nerf-check-windows.bat` | `nerf-check-macos.command` |
 | Required | **Codex desktop** or **Codex CLI**, signed in | same |
 | Required | **Git for Windows** (provides `bash.exe`) | bash is built in |
 
@@ -972,13 +991,13 @@ locations, but the author has no Mac to test on. Issues and corrections welcome.
 
 ```bash
 # clear the quarantine flag
-xattr -d com.apple.quarantine "run-check.command"
+xattr -d com.apple.quarantine "nerf-check-macos.command"
 
 # if it complains about permissions
-chmod +x run-check.command nerf-check.sh
+chmod +x nerf-check-macos.command nerf-check.sh
 ```
 
-**Or:** right-click `run-check.command` → Open → Open.
+**Or:** right-click `nerf-check-macos.command` → Open → Open.
 
 **Where `codex` is looked for, in order:**
 
@@ -1000,7 +1019,7 @@ Whatever `codex` is on `PATH` is tried first.
 
 ### Option 1 — double-click
 
-Double-click `run-check.bat` and follow the prompts:
+Double-click `nerf-check-windows.bat` and follow the prompts:
 
 ```
 1. Choose your language     Chinese / English
@@ -1060,8 +1079,8 @@ Default is 180 seconds.
 ### Option 2 — pass the model
 
 ```
-run-check.bat gpt-6-astra
-run-check.bat gpt-5.6-sol
+nerf-check-windows.bat gpt-6-astra
+nerf-check-windows.bat gpt-5.6-sol
 ```
 
 Skips the menu. Useful for batch runs or shortcuts.

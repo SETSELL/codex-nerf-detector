@@ -415,11 +415,37 @@ RUST_LOG=trace codex exec --skip-git-repo-check --model gpt-6-astra "Think step 
 grep -oE 'codex/responses: \{"model":"[^"]*"' 日志 | sed 's/.*"model":"//; s/"$//'
 
 # 响应体：服务端回来了什么，以及每个模型出现了几次
-# ⚠️ 必须先筛出 response 对象，否则日志别处的模型名会被一起搜进来
-grep -oE '"object":"response"[^}]{0,600}' 日志 \
-  | grep -oE '"model":"gpt-[0-9a-zA-Z.-]+"' \
-  | sed 's/.*"model":"//; s/"$//' | sort | uniq -c | sort -rn
+# ⚠️ 必须按 response 对象划界，否则日志别处的模型名会被一起搜进来
+awk '
+  BEGIN { A = "\"object\":\"response\"" }
+  {
+    s = $0
+    while ((a = index(s, A)) > 0) {
+      s = substr(s, a + length(A))
+      b = index(s, A)                    # 下一个响应对象的位置
+      seg = (b > 0) ? substr(s, 1, b - 1) : s
+      if (match(seg, /"model":"gpt-[0-9a-zA-Z.-]+"/))
+        print substr(seg, RSTART + 9, RLENGTH - 10)
+      if (b <= 0) break
+      s = substr(s, b)
+    }
+  }' 日志 | sort | uniq -c | sort -rn
 ```
+
+**为什么不能用「`response` 之后 N 个字符」这种固定窗口**（早期版本就是这么写的，栽过一次）：
+
+响应对象里有个 `instructions` 字段，**装着整个 Codex 系统提示词，约 21,000 字符**，把 `model` 推到很远的地方：
+
+| 日志 | `model` 距 `"object":"response"` |
+|---|---|
+| 部分请求 | 217~238 字符 |
+| 另一些请求 | **21,270 字符** |
+
+**而且中间夹着 `}`。**所以固定窗口不只是"可能不够长"，配 `[^}]` 这类字符类时**根本跨不过去**——把 600 改成多大都没用。
+
+**后果不是少个标签**：实测有三次请求 `gpt-6-astra`、响应体自称 `gpt-5.6-luna`（真实降级），工具却报了「未确定」。**这会静默丢掉真实证据。**
+
+按"下一个响应对象"划界就不依赖任何距离，而且**请求体/响应体的区分由位置保证**，不是靠邻近——这正是下面那个坑。
 
 **`uniq -c` 这一步不能省。**「同一个响应里某个模型出现了几次」本身就是证据，`sort -u` 会把这个次数直接丢掉。
 
@@ -693,8 +719,8 @@ RUST_LOG=trace "<codex.exe>" exec --skip-git-repo-check \
 grep -oE 'codex/responses: \{"model":"[^"]*"' /tmp/t.log
 
 # 4. 看响应体实际是什么、每个模型出现了几次（必须过滤 response 对象）
-grep -oE '"object":"response"[^}]{0,600}' /tmp/t.log \
-  | grep -oE '"model":"gpt-[0-9a-zA-Z.-]+"' | sort | uniq -c | sort -rn
+awk 'BEGIN{A="\"object\":\"response\""}{s=$0;while((a=index(s,A))>0){s=substr(s,a+length(A));b=index(s,A);seg=(b>0)?substr(s,1,b-1):s;if(match(seg,/"model":"gpt-[0-9a-zA-Z.-]+"/))print substr(seg,RSTART+9,RLENGTH-10);if(b<=0)break;s=substr(s,b)}}' /tmp/t.log \
+  | sort | uniq -c | sort -rn
 
 # 5. 看服务端有没有给路由提示（有就抓，没有就跳过——现在通常没有）
 grep -oE 'x-codex-routing-hint: *model=[0-9a-zA-Z.-]+' /tmp/t.log
@@ -794,7 +820,11 @@ Windows 版是实测过的。macOS 版**逻辑完全同一套**（检测部分�
 
 **2. 依赖 Codex 的日志格式**
 
-如果 `POST .../codex/responses` 这一行，或者 `"object":"response"` 这个结构变了，工具会给出「未确定」判定。那时候需要更新正则。
+如果 `POST .../codex/responses` 这一行，或者 `"object":"response"` 这个结构变了，工具会给出「未确定」判定。那时候需要更新提取方式。
+
+**但「未确定」不等于服务端没响应。** 实测踩到过一次：请求**完全成功**（HTTP 200、`response.completed`、`status:"completed"`），只是**工具自己没读出来**——而那次漏掉的，恰好是一次真实的降级（要 `astra`、给 `luna`）。
+
+**所以看到「未确定」时不要当成故障**，输出里会给出**日志路径和大小**，先去看日志。理由和修法见上面「工作原理」。
 
 **3. 曾经有更好的信号，现在没了**
 
@@ -1473,10 +1503,37 @@ grep -oE 'codex/responses: \{"model":"[^"]*"' log | sed 's/.*"model":"//; s/"$//
 # response body: what the server returned, and how often each model appeared
 # NOTE: you MUST filter for response objects first, or model names from
 # elsewhere in the log are matched too
-grep -oE '"object":"response"[^}]{0,600}' log \
-  | grep -oE '"model":"gpt-[0-9a-zA-Z.-]+"' \
-  | sed 's/.*"model":"//; s/"$//' | sort | uniq -c | sort -rn
+awk '
+  BEGIN { A = "\"object\":\"response\"" }
+  {
+    s = $0
+    while ((a = index(s, A)) > 0) {
+      s = substr(s, a + length(A))
+      b = index(s, A)                    # start of the next response object
+      seg = (b > 0) ? substr(s, 1, b - 1) : s
+      if (match(seg, /"model":"gpt-[0-9a-zA-Z.-]+"/))
+        print substr(seg, RSTART + 9, RLENGTH - 10)
+      if (b <= 0) break
+      s = substr(s, b)
+    }
+  }' log | sort | uniq -c | sort -rn
 ```
+
+**Why not a fixed window after `response`** - an earlier version searched
+600 characters past `"object":"response"` and got this wrong. The response
+object carries an `instructions` field holding the whole Codex system
+prompt, about 21,000 characters, which puts `model` at anything from 217
+characters out to 21,270. Three braces sit in between, so `[^}]`-style
+character classes cannot cross it either - enlarging the number does not
+help.
+
+The cost is not a missing label. Three runs asked for `gpt-6-astra`, were
+served `gpt-5.6-luna`, and were reported as UNDETERMINED: the bug was
+silently discarding real findings.
+
+Bounding by the next response object depends on no distance at all, and
+keeps the request/response split by position rather than proximity -
+which is the pitfall below.
 
 **The `uniq -c` step is not optional.** How many times a given model turned up in the response is evidence in its own right, and `sort -u` throws that count away.
 
@@ -1772,8 +1829,8 @@ grep -oE 'codex/responses: \{"model":"[^"]*"' /tmp/t.log
 
 # 4. the response body: what actually served, and how often each model appeared
 #    (filter for response objects)
-grep -oE '"object":"response"[^}]{0,600}' /tmp/t.log \
-  | grep -oE '"model":"gpt-[0-9a-zA-Z.-]+"' | sort | uniq -c | sort -rn
+awk 'BEGIN{A="\"object\":\"response\""}{s=$0;while((a=index(s,A))>0){s=substr(s,a+length(A));b=index(s,A);seg=(b>0)?substr(s,1,b-1):s;if(match(seg,/"model":"gpt-[0-9a-zA-Z.-]+"/))print substr(seg,RSTART+9,RLENGTH-10);if(b<=0)break;s=substr(s,b)}}' /tmp/t.log \
+  | sort | uniq -c | sort -rn
 
 # 5. the server's routing hint, if it sends one (usually it does not, now)
 grep -oE 'x-codex-routing-hint: *model=[0-9a-zA-Z.-]+' /tmp/t.log
@@ -1882,7 +1939,11 @@ users can also look at [`kiyoakii/is-gpt-nerfed`](https://github.com/kiyoakii/is
 
 **2. Depends on Codex's log format**
 
-If the `POST .../codex/responses` line or the `"object":"response"` structure changes, the tool returns UNDETERMINED and the regexes need updating.
+If the `POST .../codex/responses` line or the `"object":"response"` structure changes, the tool returns UNDETERMINED and the extraction needs updating.
+
+**UNDETERMINED does not mean the server said nothing.** It happened here once: the request completed cleanly - HTTP 200, `response.completed`, `status:"completed"` - and the tool simply failed to read it. What it failed to read that time was a real downgrade: `astra` asked for, `luna` served.
+
+So do not read UNDETERMINED as a fault. The output prints the log path and its size; go and look at the log. The cause and the fix are under "How it works" above.
 
 **3. Two better signals used to exist, and both stopped**
 

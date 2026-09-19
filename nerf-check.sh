@@ -485,22 +485,45 @@ fi
 # ============================================================
 # 3. MODEL CATALOG  (no request needed)
 # ============================================================
-MODEL_LIST=""
+# The catalog already lists models in the right order - newest flagship
+# first, then down through the tiers. Sorting them alphabetically (as an
+# earlier version did) put gpt-6-astra dead last, which is exactly backwards.
+# So: read the entries in file order, keep the slug, the display name and
+# the description together, and drop only gpt-reserve (an internal fallback
+# that users cannot select in the picker).
+MODEL_TABLE=""
 if [ -f "$CACHE" ]; then
-    # gpt-reserve is an internal fallback that users cannot select in the
-    # picker. Testing it says nothing about what a user would experience,
-    # so it is filtered out of the testable list.
-    MODEL_LIST=$(grep -oE '"slug": *"gpt-[^"]*"' "$CACHE" 2>/dev/null \
-                 | sed 's/.*"slug": *"//; s/"$//' | sort -u \
-                 | grep -v '^gpt-reserve$')
+    MODEL_TABLE=$(awk '
+        /"slug": *"gpt-/ {
+            line = $0
+            sub(/.*"slug": *"/, "", line); sub(/".*/, "", line)
+            slug = line; dn = ""; slug_seen = 1; next
+        }
+        slug_seen && /"display_name": *"/ {
+            line = $0
+            sub(/.*"display_name": *"/, "", line); sub(/".*/, "", line)
+            dn = line; next
+        }
+        slug_seen && /"description": *"/ {
+            line = $0
+            sub(/.*"description": *"/, "", line); sub(/".*/, "", line)
+            if (slug != "gpt-reserve") print slug "|" dn "|" line
+            slug_seen = 0; next
+        }
+    ' "$CACHE" 2>/dev/null)
 fi
 
-model_desc() {
-    # slug / display_name / description sit on separate lines in the cache,
-    # so this has to look a few lines ahead rather than match on one line.
-    grep -A8 "\"slug\": *\"$1\"" "$CACHE" 2>/dev/null \
-      | grep -m1 '"description"' \
-      | sed 's/.*"description": *"//; s/",*[[:space:]]*$//'
+# plain slug list, same order, for the sweep loop
+MODEL_LIST=$(echo "$MODEL_TABLE" | cut -d'|' -f1 | grep -v '^$')
+
+# "gpt-6-astra|GPT-6-Astra|Our most capable model..." -> print rows
+show_model_rows() {
+    echo "$MODEL_TABLE" | awk -F'|' '
+        NF >= 2 {
+            n++
+            printf "    %d) %-16s %s\n", n, $2, $1
+            if ($3 != "") printf "       %s\n", $3
+        }'
 }
 
 # ============================================================
@@ -699,14 +722,8 @@ case "$ACT" in
     fi
     echo "  --- $T_PICKMODEL --------------------"
     echo
-    n=0
-    while read -r m; do
-        [ -n "$m" ] || continue
-        n=$((n+1))
-        d=$(model_desc "$m")
-        printf "    %d) %-20s %s\n" "$n" "$m" "$d"
-    done <<< "$MODEL_LIST"
-    n=$((n+1))
+    show_model_rows
+    n=$((NMODELS+1))
     printf "    %d) %s\n" "$n" "$T_CUSTOM"
     echo
     echo "    0) ${CFGMODEL:-?}"
@@ -847,11 +864,7 @@ case "$ACT" in
     else
         echo "  --- $T_CFGCOUNT: $NMODELS ---"
         echo
-        while read -r m; do
-            [ -n "$m" ] || continue
-            d=$(model_desc "$m")
-            printf "    %-20s %s\n" "$m" "$d"
-        done <<< "$MODEL_LIST"
+        show_model_rows
     fi
     ;;
 

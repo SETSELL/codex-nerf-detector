@@ -255,6 +255,7 @@ T_REPEAT_1="1 次   快，但只能证明「发生过」，不能证明「每次
 T_REPEAT_3="3 次   推荐 —— 能看出是偶发还是稳定复现"
 T_REPEAT_5="5 次   最有力，但很慢"
 T_REPEAT_EACH="每个模型测"
+T_TOTAL_REQ="本次共发出请求"
 T_EST_TIME="预计耗时约"
 T_MINUTES="分钟"
 T_FULL_ASK="继续吗？(y/N) "
@@ -386,6 +387,7 @@ T_REPEAT_1="1 time     fast, but only proves it happened, not that it always hap
 T_REPEAT_3="3 times    recommended - shows whether it is occasional or consistent"
 T_REPEAT_5="5 times    strongest, but slow"
 T_REPEAT_EACH="requests per model"
+T_TOTAL_REQ="requests this run"
 T_EST_TIME="estimated time"
 T_MINUTES="min"
 T_FULL_ASK="Continue? (y/N) "
@@ -924,6 +926,7 @@ run_one_model() {
     R_PLAN=""; R_CREDITS=""; R_HASCRED=""; R_LIMIT=""
     R_RESET=""; R_RESET_TXT=""; R_CAUSE=""
     R_ALLOWED=""; R_LIMREACHED=""; R_USEDPCT=""; R_WINDOW=""
+    R_GOT_CNT=""
     R_HINT=""; R_TTFT=""; R_QUEUE=""; R_RTOK=""
     R_EMAIL=$(grep -oE 'user\.email="[^"]*"' "$LOG" 2>/dev/null | head -1 | sed 's/user\.email="//; s/"$//')
 
@@ -1021,12 +1024,17 @@ run_one_model() {
         R_RESET_TXT="${R_RESET}s (~${R_RESET_D}d ${R_RESET_H}h)"
     fi
 
-    local models
-    models=$(grep -oE '"object":"response"[^}]{0,600}' "$LOG" 2>/dev/null \
-             | grep -oE '"model":"gpt-[0-9a-zA-Z.-]+"' \
-             | sed 's/.*"model":"//; s/"$//' | sort -u)
+    # Counted, not just de-duplicated: how many times each model turned up
+    # in the response is evidence in its own right, and the README has been
+    # promising an "xN" column that no version of this script ever printed.
+    local models raw
+    raw=$(grep -oE '"object":"response"[^}]{0,600}' "$LOG" 2>/dev/null \
+          | grep -oE '"model":"gpt-[0-9a-zA-Z.-]+"' \
+          | sed 's/.*"model":"//; s/"$//' | sort | uniq -c | sort -rn)
+    models=$(echo "$raw" | awk '{print $2}' | grep .)
 
     R_GOT=$(echo "$models" | tr '\n' '+' | sed 's/+$//')
+    R_GOT_CNT=$(echo "$raw" | awk '{printf "%s %s\n", $2, $1}')
     local cnt; cnt=$(echo "$models" | grep -c .)
 
     # Four grades, not two. "OK" hides the difference between a model that
@@ -1077,6 +1085,19 @@ show_one_result() {
     result_row "$R_WANTED" "$R_GOT" "$R_RTOK" "$R_ELAPSED" "$R_MARK" "$R_VERDICT" "$PROBE_EFFORT"
     echo "--------------------------------------------------"
     echo
+    # Every model the response carried, and how many times each appeared.
+    # A number appearing once on its own says little; yours never appearing
+    # while a cheaper one shows up repeatedly is the thing being measured.
+    if [ -n "$R_GOT_CNT" ]; then
+        echo "  $T_SEEN"
+        echo "$R_GOT_CNT" | while read -r mm nn; do
+            [ -n "$mm" ] || continue
+            if [ "$mm" = "$R_WANTED" ]; then tag="   $T_WANTED"
+            else                              tag="   $T_DOWNGRADE"; fi
+            printf "        %-20s x%-4s%s\n" "$mm" "$nn" "$tag"
+        done
+        echo
+    fi
     echo "================================================================================"
     echo "  $T_RESULT : $(grade_colour "$R_MARK")${R_VERDICT}${C_OFF}"
     echo "================================================================================"
@@ -1268,7 +1289,10 @@ case "$ACT" in
     esac
     echo
     echo "  $T_REPEAT_EACH : $REPEATS"
-    echo "  $T_EST_TIME   : ~$((NMODELS * REPEATS * 60 / 60)) $T_MINUTES"
+    echo "  $T_TOTAL_REQ  : $((NMODELS * REPEATS))"
+    # A reasoning request measured at roughly two minutes, so the old
+    # one-minute-per-request figure understated a sweep by half.
+    echo "  $T_EST_TIME   : ~$((NMODELS * REPEATS * 2)) $T_MINUTES"
     echo
     echo -n "  $T_FULL_ASK"; read GO
     case "$GO" in

@@ -178,6 +178,8 @@ T_M1="单模型检测     —— 选一个模型测一次"
 T_M2="全模型一键检测 —— 逐个测完所有模型（推荐）"
 T_M3="只看模型清单   —— 不发请求，不消耗额度"
 T_M0="退出"
+T_BACK="按回车回到菜单..."
+T_UNKNOWN="请输入 1、2 或 3；输入 0 退出。"
 T_PICK="输入序号后回车： "
 T_PICKMODEL="选择要检测的模型"
 T_CUSTOM="自定义（手动输入模型名）"
@@ -306,6 +308,8 @@ T_M1="Quick check         - test one model"
 T_M2="Full sweep          - test every model (recommended)"
 T_M3="List models only    - no request, no quota used"
 T_M0="quit"
+T_BACK="Press Enter to return to the menu..."
+T_UNKNOWN="Enter 1, 2 or 3, or 0 to quit."
 T_PICK="enter a number: "
 T_PICKMODEL="choose the model to test"
 T_CUSTOM="custom (type a model name)"
@@ -1179,6 +1183,12 @@ record_one() {
 # ============================================================
 # 6. MAIN MENU
 # ============================================================
+# A finished run comes back here instead of dropping the user out, so
+# testing a second account, or switching between one model and the full
+# sweep, costs a keypress rather than a relaunch. Only "0" leaves.
+# Deliberately not re-indented: the whole script is flat top level, and
+# indenting 200 lines to add a loop would bury the change.
+while :; do
 echo "  $T_MAIN_HDR"
 echo
 echo "    1) $T_M1"
@@ -1186,7 +1196,10 @@ echo "    2) $T_M2"
 echo "    3) $T_M3"
 echo "    0) $T_M0"
 echo
-echo -n "  $T_PICK"; read ACT
+echo -n "  $T_PICK"
+# Piped input can run out; without this the loop would spin on EOF
+# printing the menu forever.
+if ! read -r ACT; then echo; echo "  $T_BYE"; exit 0; fi
 echo
 
 case "$ACT" in
@@ -1196,7 +1209,7 @@ case "$ACT" in
 # ------------------------------------------------------------
     if [ -z "$MODEL_LIST" ]; then
         echo "  $T_NOCACHE"; echo
-        echo -n "$T_EXIT"; read dummy; exit 1
+        echo -n "$T_BACK"; read -r dummy; echo; continue
     fi
     echo "  --- $T_PICKMODEL --------------------"
     echo
@@ -1222,7 +1235,7 @@ case "$ACT" in
 
     if [ -z "$TESTMODEL" ]; then
         echo "  $T_NOSELECT"
-        echo -n "$T_EXIT"; read dummy; exit 1
+        echo -n "$T_BACK"; read -r dummy; echo; continue
     fi
 
     # Which reasoning efforts to probe. The list is per model - gpt-5.5
@@ -1309,7 +1322,7 @@ case "$ACT" in
 # ------------------------------------------------------------
     if [ -z "$MODEL_LIST" ]; then
         echo "  $T_NOCACHE"; echo
-        echo -n "$T_EXIT"; read dummy; exit 1
+        echo -n "$T_BACK"; read -r dummy; echo; continue
     fi
     echo "  $T_FULL_WARN"
     echo "  ($T_CFGCOUNT: $NMODELS)"
@@ -1344,7 +1357,7 @@ case "$ACT" in
     echo -n "  $T_FULL_ASK"; read GO
     case "$GO" in
         y|Y|yes|YES|是) ;;
-        *) echo; echo -n "$T_EXIT"; read dummy; exit 0 ;;
+        *) echo; continue ;;
     esac
     echo
     echo "  === $T_FULL_GO ==="
@@ -1427,8 +1440,12 @@ case "$ACT" in
     fi
     ;;
 
-*)  echo "  $T_BYE" ; exit 0 ;;
+0)  echo "  $T_BYE" ; exit 0 ;;
+*)  echo "  $T_UNKNOWN" ;;
 esac
 
 echo
-echo -n "$T_EXIT"; read dummy
+echo -n "$T_BACK"
+if ! read -r dummy; then echo; exit 0; fi
+echo
+done

@@ -455,12 +455,19 @@ if [ "$Q1" = "1" ]; then
   across days, across accounts - while the picker kept advertising
   Astra and the invoice kept saying Astra.
 
-  This header arrived in the very same HTTP response:
+  For a while, this appeared too:
 
         x-codex-routing-hint: model=gpt-6-astra
 
-  Your server told the client it was routing to Astra, and then sent
-  a body signed by Luna. Both statements are yours. One is not true.
+  A hint naming Astra, in a run whose body was signed by Luna.
+
+  We are not going to tell you which direction that header travelled -
+  we never confirmed it, and we are not going to assert something we
+  cannot show. What we can show is that it is gone: it is absent from
+  every recent capture, including the runs where the swap is confirmed,
+  while every other x-codex-* field is still being sent.
+
+  That is the second time. engine_ids went first.
 
 
   YOU DELETED THE MIRROR, NOT THE BEHAVIOUR

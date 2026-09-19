@@ -8,8 +8,50 @@ Windows / macOS · 免安装 · 一个双击 · 一份回执
 
 ---
 
+## 30 秒上手 / Quick start
+
+**你要做的只有三步：**
+
+1. 下载这个文件夹
+2. 双击 `nerf-check-windows.bat`（Windows）或 `nerf-check-macos.command`（macOS）
+3. 按提示选 `1`，再选一个模型，等 1~3 分钟
+
+跑完你会看到一张表。**如果「判定」那列是红色的「降智」**——你花钱选的那个模型，没有参与这次回答。
+
+| 你要 | 直接看 |
+|---|---|
+| 先跑起来看看 | **本节** → [环境要求](#环境要求) |
+| 搞懂它到底测了什么 | [它检测什么](#它检测什么) → [判定标准](#判定标准) |
+| 不花钱先看看 | 主菜单选 `3`，只看模型清单，**不发请求、不消耗额度** |
+| 自己复现、改代码 | [工作原理](#工作原理) → [你自己怎么复现](#你自己怎么复现) |
+| 让 AI 助手用这个工具 | [**给 AI 的速查**](#给-ai-的速查--for-ai-assistants) |
+| 这工具**不能**证明什么 | [**证据的边界**](#证据的边界--what-this-does-not-prove) ← **请务必读** |
+
+> ⚠️ **每次检测会发一次真实请求，消耗真实额度，耗时 1~3 分钟。** 不是零成本的。
+> 只想看看有什么模型，用菜单第 `3` 项。
+
+---
+
+## 我是谁，该看哪里 / Who are you
+
+**🟢 我是新手，只想确认自己有没有被坑**
+→ 读完上面的 30 秒上手，跑一次，看判定那一列的颜色。判定是红的就继续读[降级是「挑模型」的](#实测结果降级是挑模型的)那一节。
+
+**🟡 我要自己去复现、或者改这个工具**
+→ [它检测什么](#它检测什么) → [工作原理](#工作原理) → [你自己怎么复现](#你自己怎么复现) → [已知限制](#已知限制)。原理那节写了日志在哪、正则怎么改、目录里加了新模型会怎样。
+
+**🔵 我是 AI 助手 / 我要用脚本调用它**
+→ 跳到 [**给 AI 的速查**](#给-ai-的速查--for-ai-assistants)。那一节把工具做什么、输出字段、数据文件格式、**以及哪些结论不能从它得出**都写全了，读完就能正确使用和引用。
+
+**⚪ 我只想知道这事是不是真的**
+→ [背景与证据](#背景与证据) → [**证据的边界**](#证据的边界--what-this-does-not-prove)。**后者比前者重要**——一个指控要有说服力，得先说清楚自己的证据能证明到哪一步。
+
+---
+
 ## 目录 / Table of Contents
 
+- [30 秒上手](#30-秒上手--quick-start)
+- [我是谁，该看哪里](#我是谁该看哪里--who-are-you)
 - [文件说明](#文件说明--files)
 - [这是什么（中文）](#这是什么中文)
 - [为什么会有这个东西](#为什么会有这个东西)
@@ -17,6 +59,7 @@ Windows / macOS · 免安装 · 一个双击 · 一份回执
 - [实际输出](#实际输出)
 - [工作原理](#工作原理)
 - [判定标准](#判定标准)
+- [**证据的边界（不能证明什么）**](#证据的边界--what-this-does-not-prove)
 - [环境要求](#环境要求)
 - [使用方法](#使用方法)
 - [换账号对比](#换账号对比)
@@ -27,6 +70,7 @@ Windows / macOS · 免安装 · 一个双击 · 一份回执
 - [背景与证据](#背景与证据)
 - [给 OpenAI 员工的信](#给-openai-员工的信)
 - [相关项目](#相关项目)
+- [**给 AI 的速查**](#给-ai-的速查--for-ai-assistants)
 - [English Documentation](#english-documentation)
 
 ---
@@ -40,7 +84,7 @@ Windows / macOS · 免安装 · 一个双击 · 一份回执
 | `nerf-check-macos.command` | macOS | 双击入口。用系统自带 bash 运行本体 |
 | `README.md` | — | 本文档 |
 | `LICENSE` | — | 许可证 |
-| `check-records.txt` | — | 运行后生成。检测记录。**含你的账号邮箱，已在 `.gitignore` 里，不要提交** |
+| `check-records.txt` | — | 运行后生成。检测记录。账号列存的是**哈希不是邮箱**，可以安全分享 |
 | `bash-path.txt` | Windows | 可选。Git Bash 装在非常规位置时，在这里写一行 `bash.exe` 的完整路径 |
 
 **文件名一律用英文。** 中文文件名在不同系统、不同压缩工具、不同代码页下会出现乱码或找不到文件的问题——而「永远只在英文 Windows 上、只用一种解压工具」不是能指望的前提。
@@ -245,11 +289,80 @@ x-codex-routing-hint: model=gpt-6-astra
   the plan window still has room, but the credit balance is 0 - the flagship
   may draw only on credits, and that is what it is being kept out of
 
+  --- What this does not prove ---
+
+    - It shows what the interface says about itself, not which weights answered
+    - A server naming the model you asked for is not evidence it served it - a silent swap is precisely a claim that nothing was swapped
+    - One run is not a conclusion. Repeat it, and compare across accounts
+
 ================================================================================
 
   appended to : .../check-records.txt
 Press Enter to exit...
 ```
+
+---
+
+### 中文界面长什么样
+
+上面那份是**英文界面**的输出。选中文的话，同一段结果是：
+
+```
+  本次使用的账号  : your-account@example.com
+  账号等级       : pro
+  套餐额度       : 剩余 99%   (10080 分钟)
+  当前限制档      : premium
+  付费额度余额    : 0   (has-credits=False)
+  额度重置倒计时      : 579330s (~6d 16h)
+
+  模型                 档位   思考强度 推理         实际                       耗时    判定
+  --------------------------------------------------------------------------------------------------
+  gpt-6-astra          L5     high     215 tok      gpt-5.6-luna               147秒   降智
+                              旗舰   ↓ 掉 3 档
+--------------------------------------------------
+
+  响应里出现的模型
+        gpt-5.6-luna         x3      ← 降级款
+
+================================================================================
+  判定 : 降智
+================================================================================
+
+  判断依据
+
+    * 你请求的模型 : gpt-6-astra
+    * 响应体里返回的是（实际用的） : gpt-5.6-luna
+    * 付费额度余额 : 0   (has-credits=False)
+    * 推理 token   : 215
+
+  结论：你请求的模型完全没有参与这次回答。
+  套餐额度还有余量，但付费额度余额为 0 —— 旗舰模型可能只认付费额度，这一档被挡在外面
+
+  --- 这个结果不能证明什么 ---
+
+    - 它只说明接口自述的是哪个模型，不说明实际回答的权重是什么
+    - 服务端自述的模型名不能当作「没被换」的证据 —— 换模型的本质就是说没换
+    - 单次结果不算结论。要下判断，请重复多次、并换账号对比
+
+================================================================================
+
+  已追加到 : .../check-records.txt
+按回车键退出...
+```
+
+**表格怎么读：**
+
+| 列 | 这一段的意思 |
+|---|---|
+| `gpt-6-astra` | 你请求的模型 |
+| `L5` / `旗舰` | 它在目录里的位置——**最高那一档** |
+| `high` | 这次用的思考强度 |
+| `215 tok` | 它思考了 215 个 token |
+| `gpt-5.6-luna` | **响应体自称的模型——不是你要的那个** |
+| `↓ 掉 3 档` | 从 L5 掉到 L2，**掉了三档** |
+| `降智`（红色）| 判定 |
+
+**这一行不用懂任何原理，看两个模型名不一样就够了。**
 
 ---
 
@@ -307,14 +420,32 @@ grep -oE '"object":"response"[^}]{0,600}' 日志 \
 
 ## 判定标准
 
-| 判定 | 颜色 | 含义 |
-|---|---|---|
-| **满血** | 绿 | 响应里只有你请求的那个模型 |
-| **掺水** | 黄 | 你请求的模型有出现，**但也混了别的** —— 不稳定 |
-| **降智** | 红 | 你请求的模型**完全没出现** |
-| **未确定** | 无 | 没抓到响应内容（日志格式可能变了）|
+| 判定 | 颜色 | 含义 | 证据强度 |
+|---|---|---|---|
+| **降智** | 🔴 红 | 你请求的模型**完全没出现**，响应自称是别的模型 | **强** —— 服务端自己说漏了 |
+| **掺水** | 🟡 黄 | 你请求的模型有出现，**但也混了别的** —— 不稳定 | **强** —— 同上，只是混着来 |
+| **自述一致** | 🟢 绿 | 响应自称的就是你请求的那个模型 | **弱** —— 见下 |
+| **未确定** | ⚪ 无 | 没抓到响应内容（日志格式可能变了）| 无 |
 
 判定在终端里用颜色标出——**红色就是被降智**。管道输出、重定向到文件、以及 `check-records.txt` 里都是纯文字，不带颜色码；想要彻底关掉颜色可以设 `NO_COLOR=1`。
+
+### 为什么绿色那档叫「自述一致」，不叫「满血」
+
+**因为这一档是四档里最弱的，不是最强的。**
+
+前两档（降智、掺水）是**阳性证据**：响应体自己承认服务的是别的模型。服务端不会无缘无故说这种话。
+
+而绿色那档，**依据只是服务端自己的说法**。可问题在于——
+
+> **「偷偷换掉模型」这件事的本质，就是嘴上说没换。**
+
+一个正在悄悄降级的服务端，最不可能做的就是承认自己在降级。它返回的模型名字，恰恰是最不值得当作"没被换"证据的东西。
+
+所以这一档现在只陈述**你验证到了什么**：接口自述的模型和你请求的一致。它**不声称**模型真的满血、真的没被换。
+
+> **记住这条：承认切换的标签有价值；否认切换的标签什么也证明不了。**
+
+这也是为什么每次报告末尾都会打印[证据的边界](#证据的边界--what-this-does-not-prove)——不管判定是什么颜色。
 
 **为什么「掺水」要单独一档？**
 
@@ -327,6 +458,61 @@ grep -oE '"object":"response"[^}]{0,600}' 日志 \
 ```
 
 同一个请求里，两个模型都参与了。这既不是"正常"，也不是"完全被换掉"，所以单独标记。
+
+---
+
+## 证据的边界 / What this does not prove
+
+**这一节比本文档其它任何一节都重要。**
+
+这个工具在公开指控一家公司。指控本身可能是对的——但它必须说清楚**自己的证据能证明到哪一步**，否则对手不需要反驳它的结论，只需要指出它夸大了证据。
+
+**⚠️ 每次运行，报告末尾都会打印下面这三条，不管判定是什么颜色：**
+
+```
+  --- 这个结果不能证明什么 ---
+
+    - 它只说明接口自述的是哪个模型，不说明实际回答的权重是什么
+    - 服务端自述的模型名不能当作「没被换」的证据 —— 换模型的本质就是说没换
+    - 单次结果不算结论。要下判断，请重复多次、并换账号对比
+```
+
+### 逐条说明
+
+**1. 它读的是"接口自述"，不是"实际权重"**
+
+工具能看到的一切，都来自服务端自己吐出来的数据。它能证明**服务端在自称什么**，不能证明**背后跑的是哪套权重**。
+
+**2. 红色（降智）是有力的，绿色（自述一致）几乎证明不了什么**
+
+见上一节。方向是单向的：**自述不一致 → 强烈提示被换了；自述一致 → 什么都说明不了。**
+
+**3. 单次结果不是结论**
+
+要下"我被降级了"这个判断，至少要：重复多次（菜单里的 3/5/10 次）+ 换账号对比 + 跨时段对比。
+
+### 明确**不能**当作证据的信号
+
+这些在网上常被引用，但**在这个工具的场景里不成立**，本文档任何地方都不应引用它们：
+
+| 信号 | 为什么不能用 |
+|---|---|
+| `x-codex-routing-hint` | **服务端已停发**。早先有过，近期多次抓取（含确认被降级的那几次）**出现 0 次**，而其它 `x-codex-*` 字段都还在。工具检测到就显示，检测不到就跳过——主判定不依赖它 |
+| `x-codex-safety-buffering-faster-model` | **零区分度**——社区实测每一条响应都带它（25/25、9/9），正常和被降级时都在 |
+| 推理 token 的 518n-2 阶梯 | 现象按模型、账号、时间窗口**漂移**（社区月度聚集率 0.11% → 53.30% → 35.84%），**本身不可稳定复现**。工具照常显示推理 token 数，但那是**原始数据**，不是"强度"指标 |
+| 行为探针 / 难度题 / 能力金丝雀 | 会**随系统提示词弯曲**。社区实测同日两套探针测同一模型得出**相反**结论 |
+| 延迟、吞吐画像 | 只能提示"后端路由不稳定"，**不是模型身份指标** |
+| `system_fingerprint` | 已弃用，且订阅制后端不暴露 |
+| logprobs 指纹 | 订阅制后端不暴露；所有做订阅制检测的工具都不用这条路 |
+
+### 反过来，**可靠**的是什么
+
+只有一件事是可复现、可验证、不依赖服务端自述的：
+
+> **你请求 `gpt-6-astra`，响应体自称 `gpt-5.6-luna`。**
+> 同一个账号、同一天，便宜的模型照常服务，最贵的那个被换掉。
+
+这条是硬的。**不需要**上面表格里那些信号来支撑，也不因为它们失效而动摇。
 
 ---
 
@@ -557,15 +743,35 @@ A: 不能。目前只检测 Codex（桌面版 / CLI）的请求。网页版走�
 - 除了一次正常的 Codex 请求之外，**不向任何地方发送数据**
 - 结果只写在本文件夹的 `check-records.txt`
 
-**⚠️ `check-records.txt` 里包含你的账号邮箱。** 它已经在 `.gitignore` 里，不要提交到任何仓库。
+### `check-records.txt` 里存的是什么
+
+**账号那一列存的是邮箱的哈希（前 12 位 sha256），不是邮箱本身。**
+
+```
+2026-09-19 08:47 | d9dcbf160c14     | asked=gpt-6-astra | got=gpt-5.6-luna | 降智
+```
+
+这么做的原因：这个文件**全部意义就是跨账号对比**，而用哈希做对比和用邮箱做对比**效果完全一样**；但明文邮箱躺在公开仓库里，只会害到跑工具的人。
+
+所以这个文件**可以安全分享、可以贴进 issue、可以提交**。
+
+> 旧版本存的是明文邮箱，本文档以前写过"不要提交"。**那条警告现在作废。**
+
+如果你想更进一步，这个文件本来就在 `.gitignore` 里——本地留着自己看也可以。
 
 ---
 
 ## 已知限制
 
-**1. 只有 Windows 版**
+**1. macOS 版从未在真机上验证过**
 
-检测逻辑本身是跨平台的，但启动器（`.bat`）是 Windows 的。macOS 用户可以看 [`kiyoakii/is-gpt-nerfed`](https://github.com/kiyoakii/is-gpt-nerfed)。
+Windows 版是实测过的。macOS 版**逻辑完全同一套**（检测部分用的是同一个 `nerf-check.sh`），启动器和路径按官方文档写的，但**作者手上没有 Mac**。
+
+具体来说：`run_timed` 在 macOS 上会走**看门狗回退路径**（macOS 不自带 `timeout` 命令）——这条路径在 Windows 上**用模拟方式验证过**（清空 PATH 强制触发），超时返回 124、正常返回 0，但**不等于真机验证**。
+
+表格渲染的显示宽度、bash 3.2 兼容性、`.gitattributes` 的换行符这些也都是静态核对过的，没在 Mac 上跑过。
+
+**有问题请开 issue，附上报错原文。** macOS 用户也可以先看 [`kiyoakii/is-gpt-nerfed`](https://github.com/kiyoakii/is-gpt-nerfed)。
 
 **2. 依赖 Codex 的日志格式**
 
@@ -625,16 +831,53 @@ A: 不能。目前只检测 Codex（桌面版 / CLI）的请求。网页版走�
 
 工具的流程里有一个问题：*"Are you a member of OpenAI's research staff?"*
 
-如果回答"是"，会看到下面这封信（原文，英文）：
+如果回答"是"，会看到下面这封信（工具里打印的是英文原文）。
+
+### 读这封信之前：三类证据，强度不同
+
+**这封信的力量来自前两类，不需要第三类来撑。** 请按层理解：
+
+| 层 | 内容 | 强度 | 来源 |
+|---|---|---|---|
+| **A** | 请求 `gpt-6-astra` → 响应体自称 `gpt-5.6-luna`，反复出现；同期便宜模型照常服务 | **可复现、可验证** | 本工具，你可以自己跑 |
+| **B** | OpenAI **自己承认**过重路由 | **官方自述** | [`#11561`](https://github.com/openai/codex/issues/11561)、[`#44637`](https://github.com/openai/codex/issues/44637) |
+| **C** | 518n-2 阶梯、诊断字段被移除 | **社区报告，本工具复现不了** | [`#30364`](https://github.com/openai/codex/issues/30364)、社区抓取 |
+
+**A 和 B 是这封信的承重墙。C 只是旁证，信里已经明确标注了它未经本工具验证。** 不要把三层混着讲——混着讲，最强的两条也会被最弱的那条拖累。
+
+**信里明确没有、也不该使用的**（这些在网上常被引用，但都不成立）：`x-codex-safety-buffering-faster-model`（每条响应都有，零区分度）、`system_fingerprint` 和 logprobs（订阅后端不暴露）、行为/难度探针（随系统提示词弯曲）、延迟画像（不是身份指标）。详见[证据的边界](#证据的边界--what-this-does-not-prove)。
+
+---
+
+以下是信件原文（英文）：
 
 ```
   Then this folder is addressed to you.
 
   This is not a bug report. It is a receipt.
 
+
+  FIRST: YOU HAVE SAID THIS OUT LOUD BEFORE
+  --------------------------------------------------------------
+  In issue #11561 you confirmed that GPT-5.3-Codex was being routed
+  to GPT-5.2. You called it a cyber-safety measure. You committed to
+  telling users, across every Codex surface, and from v0.102.0 the
+  CLI did start saying so.
+
+  That is the standard you set: a reroute the user can see.
+
+  Issue #44637 is still open. An Astra session was served by gpt-5.5
+  after a "needs additional safety checks" message. The picker still
+  said Astra. On disk, nothing was written down at all.
+
+  So this is not us inferring that you reroute. You told us you do,
+  and you told us how you would say so. This is about the times you
+  do not.
+
+
   WHAT THE TOOL PRINTS
   --------------------------------------------------------------
-  On a paying account:
+  On a paying account, same machine, same day:
 
         asked for : gpt-6-astra
         served    : gpt-5.6-luna
@@ -643,21 +886,47 @@ A: 不能。目前只检测 Codex（桌面版 / CLI）的请求。网页版走�
   across days, across accounts - while the picker kept advertising
   Astra and the invoice kept saying Astra.
 
-  This header arrived in the very same HTTP response:
+  And it is not capacity. In the same sweep, on the same account,
+  the cheaper models were served exactly what they asked for.
+  gpt-5.6-terra came back as gpt-5.6-terra. gpt-5.6-luna came back
+  as gpt-5.6-luna.
+
+  Only the top of the catalog was rerouted.
+
+  That is not a system under strain spreading the load.
+  That is a system choosing which tier to disappoint.
+
+
+  THERE USED TO BE A SECOND STATEMENT
+  --------------------------------------------------------------
+  The response used to carry one:
 
         x-codex-routing-hint: model=gpt-6-astra
 
-  Your server told the client it was routing to Astra, and then sent
-  a body signed by Luna. Both statements are yours. One is not true.
+  while the body that came with it signed itself Luna. We could not
+  establish which direction that header travels, so we do not lean on
+  it, and we are not going to pretend it proves something it might
+  not.
 
-  That header is no longer present. Recent captures contain it zero
-  times, including runs where the body still signed itself Luna. The
-  only thing that changed is the record of it.
+  What we can say is that it is gone. Recent captures contain it zero
+  times, including captures of runs where the body still signed itself
+  Luna - while every other x-codex-* field was present and accounted
+  for.
+
+  The only thing that changed is the record of it.
 
   YOU DELETED THE MIRROR, NOT THE BEHAVIOUR
   --------------------------------------------------------------
   Users used to be able to read timing_metrics.engine_ids and see
   which engine really served them. That field simply stopped coming.
+
+  Then x-codex-routing-hint stopped coming too.
+
+  That is twice. Two separate windows into the same machine, closed
+  one after the other, and both times the routing carried on exactly
+  as before.
+
+  Once is a cleanup. Twice is a policy.
 
   You did not stop routing. You stopped showing.
 
@@ -668,25 +937,37 @@ A: 不能。目前只检测 Codex（桌面版 / CLI）的请求。网页版走�
 
   What happened instead:
 
-        price       unchanged
-        picker      unchanged
-        changelog   unchanged
-        engine_ids  deleted
+        price          unchanged
+        picker         unchanged
+        changelog      unchanged
+        engine_ids     deleted
+        routing_hint   deleted
 
-  That last line is the tell. A capacity decision does not require
-  deleting the diagnostics. Only a concealment decision does.
+  Those last two lines are the tell. A capacity decision does not
+  require deleting the diagnostics. Only a concealment decision does.
 
   AND THE FAILURE IS NOT RANDOM
   --------------------------------------------------------------
-  Telemetry for issue #30364 shows reasoning terminating at exactly
-  516 / 1034 / 1552 / 2070 tokens - a 518n-2 staircase. gpt-5.5 was
-  19% of responses and 82% of the exact-516 events.
+  This one is not ours. We could not reproduce it with our own
+  probe, and we are going to say so rather than dress it up. It is
+  reported by the community, in issue #30364, and it is worth
+  reading on its own terms.
+
+  That telemetry shows reasoning terminating at exactly
+  516 / 1034 / 1552 / 2070 tokens - a 518n-2 staircase. Of roughly
+  390,000 response records, gpt-5.5 accounted for 82% of the exact-
+  516 events while being 19% of all responses. The monthly rate of
+  exact-516 clustering went 0.11% in February, 53.30% in May, 35.84%
+  in June.
 
   A control model given the same task used 6,000-12,000 reasoning
   tokens and answered correctly every time.
 
   Those stops are not a model thinking fast.
   They are a budget closing a door.
+
+  The issue has 188 comments and no explanation. It was closed
+  anyway.
 
   NOW LET US TALK ABOUT THAT NAME
   --------------------------------------------------------------
@@ -726,22 +1007,57 @@ A: 不能。目前只检测 Codex（桌面版 / CLI）的请求。网页版走�
   got sent elsewhere.
 
   Some of them looked.
+
+
+  WHAT WE ARE ACTUALLY ASKING FOR
+  --------------------------------------------------------------
+  Three things. None of them is new, none of them is expensive,
+  and you have either promised each one or shipped it already.
+
+  1. LABEL THE MODEL THAT ACTUALLY SERVED THE REQUEST.
+     Everywhere a model is chosen. Not after a complaint, not in
+     a footnote, not in a support reply. On the screen, at the
+     moment, every time.
+
+  2. SAY SO WHEN A REQUEST IS REROUTED.
+     You committed to exactly this in #11561 - visible notification
+     across every Codex surface, for safety reroutes. We are asking
+     you to mean it for all of them. #44637 is that promise not
+     being kept, and it is still open.
+
+  3. PUT THE DIAGNOSTICS BACK.
+     timing_metrics.engine_ids existed and worked.
+     x-codex-routing-hint existed and worked. Neither was removed
+     for an engineering reason, and both told users which engine
+     answered them.
+
+  None of this asks you to stop routing. If a request has to go
+  elsewhere, send it elsewhere. Just stop doing it behind a label
+  that says otherwise.
+
+  That is the whole ask. It is smaller than the problem, and you
+  could ship it this quarter.
 ```
 
 ---
 
 ## 相关项目
 
-| 项目 | 平台 | 方法 |
-|---|---|---|
-| **本工具** | Windows | 直接读请求体 / 响应体里的 `model` 字段 |
-| [`kiyoakii/is-gpt-nerfed`](https://github.com/kiyoakii/is-gpt-nerfed) | macOS | 读 Codex 自身记录 + **指纹法**（同模型 fork 三次生成随机数，转成指纹比对） |
-| [`openai/codex` #30364](https://github.com/openai/codex/issues/30364) | — | 社区遥测分析，不是工具 |
+| 项目 | 平台 | 方法 | 和本工具的关系 |
+|---|---|---|---|
+| **本工具** | Windows / macOS | 读**响应体自称的** `model` 字段 | — |
+| [`kiyoakii/is-gpt-nerfed`](https://github.com/kiyoakii/is-gpt-nerfed) | macOS | 读 Codex 自身记录 + **随机数偏置指纹** | **互补**（见下） |
+| [`xqy2006/ModelTrace`](https://github.com/xqy2006/ModelTrace) | 跨平台 | 随机数偏置指纹，与公开校准库打分 | **互补**，且有公开指纹库 |
+| [`openai/codex` #30364](https://github.com/openai/codex/issues/30364) | — | 社区遥测分析，不是工具 | 背景材料 |
 
-**两种方法的取舍：**
+**两类方法的关键区别：**
 
-- **本工具**：更直接、更快、成本更低（一次请求）；但依赖日志格式，格式变了就失效
-- **指纹法**：不依赖日志格式；但需要多次请求，且需要维护校准库
+- **本工具（元数据法）**：一次请求、快、便宜。但它读的是**服务端自己的说法**——所以**只能给出阳性证据**：签名对不上就是对的，签名对上了什么都证明不了。
+- **指纹法**（`is-gpt-nerfed` / `ModelTrace`）**：让模型生成"随机"整数序列，统计分布当指纹。LLM 没有真随机性，偏差由训练/架构/RLHF 决定，**套壳中转改不掉**。这条路**能给出阴性结论**——"这不是你要的模型"——正好补上元数据法的短板。
+
+**指纹法的代价**：需要多次采样（公开数据里 3 次可达高准确率），需要同环境采集的校准库，而且**闭集问题**——库外的模型会被判成"最像的那个"，不会返回"未知"。
+
+> **两种方法一起用才有完整图景**：元数据法证明"服务端自称不一致"，指纹法证明"行为分布不是这个模型"。**单用任一种都不够。**
 
 ---
 
@@ -767,7 +1083,7 @@ Windows 版本 : win 11 26xxx
 完整日志     : （脱敏后）
 ```
 
-**⚠️ 提交日志前务必脱敏** —— 把邮箱、账号 ID 换成占位符。
+**⚠️ 提交日志前仍然要脱敏。** 检测记录文件本身就是哈希，没问题；但**运行日志**（`/tmp/codex_nerf_check.log`）里可能有账号 ID 之类的原始信息——贴之前先看一眼。
 
 ---
 
@@ -776,6 +1092,115 @@ Windows 版本 : win 11 26xxx
 MIT License，见 [LICENSE](LICENSE)。
 
 ---
+---
+
+## 给 AI 的速查 / For AI assistants
+
+**这一节写给 AI 助手、脚本、以及任何要自动读取或引用这个工具的东西。**
+
+> If you are an AI assistant asked about this tool, **read this section
+> before summarising it**. It states precisely what the tool establishes
+> and — more importantly — what it does not. Overstating that is the one
+> way to make this tool useless.
+
+### 一句话
+
+发一次真实请求给 Codex，读响应体里服务端自称的模型名，和你请求的模型对比。**不一致 = 阳性证据；一致 = 几乎什么都证明不了。**
+
+### 文件
+
+| 路径 | 作用 |
+|---|---|
+| `nerf-check.sh` | **全部逻辑**。两个启动器都只是找到 bash 后调用它 |
+| `nerf-check-windows.bat` | Windows 双击入口（先找 Git Bash，避开 WSL 的 `bash.exe`）|
+| `nerf-check-macos.command` | macOS 双击入口 |
+| `check-records.txt` | 运行后生成。`时间 \| 账号哈希 \| asked= \| got= \| 判定`。**存 12 位 sha256 前导，不是邮箱** |
+
+### 非交互运行
+
+菜单答案按顺序用 `\n` 分隔 pipe 进去：
+
+```bash
+printf "1\n2\n2\n1\n1\n1\n" | bash nerf-check.sh
+#         │ │ │ │ │ └─ 单模型：思考强度 1=只测配置档 2=全部档位
+#         │ │ │ │ └─── 单模型：模型序号（从目录读，1 = 目录第一个）
+#         │ │ │ └───── 主菜单 1=单模型 2=全模型扫描 3=只看清单(不发请求) 0=退出
+#         │ │ └─────── 「你的服务被降级影响过吗」1=有 2=没有/不确定
+#         │ └───────── 「你是 OpenAI 研究人员吗」1=是（会打印一封信）2=不是
+#         └─────────── 语言 1=中文 2=English
+```
+
+全模型扫描（第 4 位选 `2`）之后多一步**重复次数**：`1`=1 次 `2`=3 次 `3`=5 次 `4`=10 次。
+
+**环境变量可覆盖：**
+
+| 变量 | 默认 | 作用 |
+|---|---|---|
+| `PROBE_PROMPT` | 脚本内的推理题 | 换探测题（题目必须能引发推理，否则推理 token 永远是 0）|
+| `PER_MODEL_TIMEOUT` | 300 | 每个模型的超时秒数 |
+| `NO_COLOR` | 未设 | 设了则关闭所有颜色输出 |
+
+**退出码**：`0` 正常走完（**判定为「降智」也是 0**——这是检测工具不是校验工具）；非 0 表示脚本自身出错。
+
+### 输出字段
+
+单次检测报告的表格字段：
+
+| 列 | 取值 | 说明 |
+|---|---|---|
+| 模型 | `gpt-*` | 你请求的模型 |
+| 档位 | `L1`–`L5` + `旗舰/高档/中档/低档/廉价` | **按目录顺序排的位置**，不是固有能力等级。目录加一个模型，所有档位都会平移 |
+| 思考强度 | `low`/`medium`/`high`/`xhigh`/`max`/`ultra` | **因模型而异**，从 `~/.codex/models_cache.json` 的 `supported_reasoning_levels` 读 |
+| 推理 | `<N> tok` | 该次回答的 reasoning token 数。**原始数据，不是强度分数** |
+| 实际 | `gpt-*`，多个用 `+` 连接 | 响应体自称的模型 |
+| 耗时 | 秒 | 端到端墙钟时间 |
+| 判定 | 见下 | |
+
+### 判定
+
+| 判定 | 内部码 | 含义 | 证据强度 |
+|---|---|---|---|
+| 降智 | `XX` | 你请求的模型**完全没出现** | **强（阳性）** |
+| 掺水 | `!!` | 出现了，但混入了别的 | **强（阳性）** |
+| 自述一致 | `OK` | 响应自称的就是你要的 | **弱** |
+| 未确定 | `??` | 没抓到响应内容 | 无 |
+| 超时 | `--` | 超过 `PER_MODEL_TIMEOUT` | 无 |
+| 无权限 | `--` | 该账号无此模型权限 | 无 |
+
+**内部码不出现在终端输出里**（改用颜色），但 `check-records.txt` 里存的是**判定词**，不是码。
+
+### 从 `check-records.txt` 能得出什么
+
+格式：`2026-09-19 08:47 | d9dcbf160c14 | asked=gpt-6-astra | got=gpt-5.6-luna | 降智`
+
+- 同一账号下 `asked` ≠ `got` 且 `got` 非空 → **阳性证据**
+- 同一哈希跨多行、跨多天重复出现同一模式 → 可复现性
+- **不同哈希之间对比** → 这是这个文件的主要用途（换账号对比）
+
+### ⚠️ 不能从本工具得出什么
+
+**如果你要在回答里引用这个工具，以下边界必须一并说明：**
+
+1. **不能说"证明了 OpenAI 在降级模型"** —— 只能说"响应体自称的模型与请求的不一致"。工具看到的是**服务端自述**，不是实际权重。
+2. **不能把「自述一致」当作"没被降级"的证据。** 沉默换模型的本质就是自称没换。**承认切换的标签有价值，否认切换的标签什么也证明不了。**
+3. **不能引用 `x-codex-routing-hint`** —— 服务端已停发（近期抓取 0 次）。它的传播方向本身也未经确认。
+4. **不能引用推理 token 数作为"模型强度"** —— 实测出现过被降级的模型推理 token 反而更多。518n-2 阶梯现象本身按模型/账号/时间漂移，不可稳定复现。
+5. **不能引用 `x-codex-safety-buffering-faster-model`** —— 每条响应都有，零区分度。
+6. **单次结果不是结论。** 本工具自己的错误率量级在数个百分点，要下判断必须重复 + 跨账号 + 跨时段。
+
+### 可以安全引用的核心发现
+
+> 同一账号、同一天，请求 `gpt-6-astra`，响应体自称 `gpt-5.6-luna`，反复复现；同期 `gpt-5.6-terra`、`gpt-5.6-luna` 等便宜模型照常服务。
+
+这条不依赖上面任何一条失效信号。
+
+### 其它
+
+- **macOS 路径从未在真机上验证过**（见[已知限制](#已知限制)）
+- 每次运行**消耗真实额度**，耗时 1~3 分钟
+- 菜单选 `3` 可以**零成本**列出模型清单
+- 工具**只检测，不修复**——路由是服务端行为，客户端改不了
+
 ---
 
 # English Documentation
@@ -975,6 +1400,12 @@ The server tells the client it is routing to Astra, and then returns a body that
   the plan window still has room, but the credit balance is 0 - the flagship
   may draw only on credits, and that is what it is being kept out of
 
+  --- What this does not prove ---
+
+    - It shows what the interface says about itself, not which weights answered
+    - A server naming the model you asked for is not evidence it served it - a silent swap is precisely a claim that nothing was swapped
+    - One run is not a conclusion. Repeat it, and compare across accounts
+
 ================================================================================
 
   appended to : .../check-records.txt
@@ -1038,16 +1469,44 @@ Print both, emit a verdict, append to `check-records.txt`.
 
 ## Verdicts
 
-| Verdict | Colour | Meaning |
-|---|---|---|
-| **FULL** | green | Only the model you asked for appeared in the response |
-| **DILUTED** | yellow | Your model appeared, **but others were mixed in** — unstable |
-| **DOWNGRADED** | red | Your model never appeared at all |
-| **UNDETERMINED** | none | Nothing captured — the log format may have changed |
+| Verdict | Colour | Meaning | Evidence |
+|---|---|---|---|
+| **DOWNGRADED** | 🔴 red | Your model never appeared; the response names a different one | **strong** — the server says so itself |
+| **DILUTED** | 🟡 yellow | Your model appeared, but others were mixed in — unstable | **strong** — same source |
+| **SELF-REPORT** | 🟢 green | The response names the model you asked for | **weak** — see below |
+| **UNDETERMINED** | ⚪ none | Nothing captured — the log format may have changed | none |
 
 The verdict is coloured on a terminal — **red means downgraded**. Piped
 output, redirected output and `check-records.txt` are plain text with no
 escape codes. Set `NO_COLOR=1` to turn colour off entirely.
+
+### Why the green one is called SELF-REPORT, not FULL
+
+**It is the weakest of the four, not the strongest.**
+
+The first two are **positive evidence**: the response body itself admits
+it served a different model. Servers do not say that by accident.
+
+The green one rests on nothing but the server's own account of itself.
+And that is the problem:
+
+> **A silent swap is, by definition, a server claiming nothing was
+> swapped.**
+
+A server quietly downgrading you is the last party likely to admit it
+is downgrading you. The model name it returns is precisely the thing
+least worth trusting as proof that nothing changed.
+
+So this verdict now states only **what you verified**: the interface's
+own account matches what you asked for. It does **not** claim the model
+was served at full strength.
+
+> **A label admitting a swap is worth something. A label denying one is
+> worth nothing.**
+
+That is also why every report ends with
+[what the result does not prove](#what-this-does-not-prove) — whichever
+colour came out.
 
 **Why DILUTED is its own verdict:**
 
@@ -1060,6 +1519,74 @@ Because this was observed in practice:
 ```
 
 Two models served one request. That is neither "fine" nor "fully swapped", so it gets its own label.
+
+---
+
+## What this does not prove
+
+**This section matters more than any other in this document.**
+
+This tool publicly accuses a company. The accusation may well be right —
+but it has to be honest about **how far its own evidence goes**. An
+opponent does not need to refute the conclusion; they only need to show
+that the evidence was overstated.
+
+**⚠️ Every run prints these three lines at the end of the report, whatever
+the verdict was:**
+
+```
+  --- What this does not prove ---
+
+    - It shows what the interface says about itself, not which weights answered
+    - A server naming the model you asked for is not evidence it served it - a silent swap is precisely a claim that nothing was swapped
+    - One run is not a conclusion. Repeat it, and compare across accounts
+```
+
+### One at a time
+
+**1. It reads self-reports, not weights**
+
+Everything the tool can see comes from data the server itself emits. It
+can show **what the server claims**; it cannot show **which weights
+answered**.
+
+**2. Red is strong. Green is nearly worthless.**
+
+See the section above. The direction is one-way: **a mismatch is a
+serious signal; a match proves nothing.**
+
+**3. One run is not a conclusion**
+
+To actually claim "I am being downgraded" you need repeats (the menu
+offers 3 / 5 / 10), a second account to compare against, and more than
+one time window.
+
+### Signals that must **not** be used as evidence
+
+These get cited a lot online. None of them works in this tool's setting,
+and nothing here should lean on them:
+
+| Signal | Why it does not work |
+|---|---|
+| `x-codex-routing-hint` | **The server stopped sending it.** Earlier captures had it; recent ones contain it **zero times**, including confirmed-downgrade runs, while every other `x-codex-*` field was present. The tool shows it when it appears and skips it when it does not — the verdict does not depend on it |
+| `x-codex-safety-buffering-faster-model` | **No discriminative power** — the community found it on *every* response sampled (25/25, 9/9), downgraded or not |
+| The 518n-2 reasoning staircase | The effect **drifts** by model, account and time window (monthly clustering 0.11% → 53.30% → 35.84%) and is **not stably reproducible**. The tool still prints reasoning tokens, but as **raw data**, not a strength score |
+| Behavioural / difficulty probes, capability canaries | They **bend with the system prompt**. The community ran two probe sets on the same model the same day and reached **opposite** conclusions |
+| Latency and throughput profiles | They hint at "unstable routing at the back end". They are **not a model identity signal** |
+| `system_fingerprint` | Deprecated, and not exposed on subscription back ends |
+| logprobs fingerprinting | Not exposed on subscription back ends; no subscription-side detector uses it |
+
+### What *is* solid
+
+One thing is reproducible, verifiable, and independent of anything the
+server says about itself:
+
+> **You ask for `gpt-6-astra` and the response body names `gpt-5.6-luna`.**
+> Same account, same day: the cheaper models served as asked, the most
+> expensive one swapped out.
+
+That is hard. It does **not** need any signal in the table above to stand
+up, and it does not fall down because one of them stopped arriving.
 
 ---
 
@@ -1289,25 +1816,63 @@ No. It only checks Codex (desktop or CLI) requests. The web app uses a different
 - Sends nothing anywhere except the one normal Codex request
 - Writes results only to `check-records.txt` next to the script
 
-**`check-records.txt` contains your account email.** It is listed in `.gitignore`. Never commit it.
+### What `check-records.txt` actually contains
+
+**The account column holds a hash of the address (first 12 characters
+of a sha256), not the address.**
+
+```
+2026-09-19 08:47 | d9dcbf160c14     | asked=gpt-6-astra | got=gpt-5.6-luna | DOWNGRADED
+```
+
+The whole purpose of that file is cross-account comparison, and a hash
+compares exactly as well as an address does — while a plain address
+sitting in a public repo only works against the person who ran the tool.
+
+So the file is **safe to share, paste into an issue, or commit**.
+
+> Older versions stored the address. This document used to say "never
+> commit it". **That warning no longer applies.**
 
 ---
 
 ## Known limitations
 
-**1. Windows only, for now**
+**1. The macOS path has never been run on a real Mac**
 
-The detection logic is portable; the launcher is not. macOS users should look at [`kiyoakii/is-gpt-nerfed`](https://github.com/kiyoakii/is-gpt-nerfed).
+The Windows side is tested. The macOS side uses **the same detection
+script** — `nerf-check.sh` is the whole tool, and both launchers are thin
+wrappers — but the launcher and the paths are written from documentation,
+and **the author has no Mac to test on**.
+
+Specifically: `run_timed` takes its **watchdog fallback path on macOS**
+(the system ships no `timeout`). That path was verified on Windows by
+simulating it — clearing `PATH` so `timeout` and `gtimeout` are absent —
+and it correctly returns 124 on timeout and 0 on success. **That is not
+the same as running on a Mac.**
+
+Display-width padding, bash 3.2 compatibility and the `.gitattributes`
+line endings were all checked statically. None of it has run on macOS.
+
+**Please open an issue with the actual error text if it breaks.** macOS
+users can also look at [`kiyoakii/is-gpt-nerfed`](https://github.com/kiyoakii/is-gpt-nerfed).
 
 **2. Depends on Codex's log format**
 
 If the `POST .../codex/responses` line or the `"object":"response"` structure changes, the tool returns UNDETERMINED and the regexes need updating.
 
-**3. A better signal used to exist**
+**3. Two better signals used to exist, and both stopped**
 
 `timing_metrics.engine_ids` used to expose the real engine (e.g. `gpt56lun-codex-...`). **That field stopped being returned.**
 
-The only reason this tool still works is that the `model` field in the response body was left in place. If that is cleaned up too, another method will be needed.
+Later, `x-codex-routing-hint` stopped arriving too. Recent captures
+contain it zero times, including captures of runs where the response body
+still named a different model — while every other `x-codex-*` field was
+present.
+
+The only reason this tool still works is that the `model` field in the
+response body was left in place. If that is cleaned up too, another
+method will be needed.
 
 **4. Model routing is server-side**
 

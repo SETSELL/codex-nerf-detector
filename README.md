@@ -168,14 +168,14 @@ x-codex-routing-hint: model=gpt-6-astra
     5) gpt-5.3-codex-spark    legacy codex model
     6) custom (type a model name)
 
-    0) use the default from config.toml (gpt-6-astra)
+    press Enter = use the config model: gpt-6-astra
 
   enter a number: 1
 
   model to test: gpt-6-astra
 
-  Sending one minimal request through the current account...
-  Please wait (about 20-60 seconds, uses one tiny request).
+  Sending a reasoning request through the current account...
+  Please wait (reasoning takes 1-3 minutes; this spends real quota).
 
 --------------------------------------------------
   account used for this request:
@@ -216,12 +216,13 @@ x-codex-routing-hint: model=gpt-6-astra
 ### 2. 用 trace 级别日志跑一次最小请求
 
 ```bash
-RUST_LOG=trace codex exec --skip-git-repo-check --model gpt-6-astra "Reply with exactly: OK"
+RUST_LOG=trace codex exec --skip-git-repo-check --model gpt-6-astra "Think step by step, then reply with only the answer: the smallest n where n mod 7 = 3, n mod 11 = 5 and n mod 13 = 9"
 ```
 
 - `RUST_LOG=trace` 是**必须的**——不开的话抓不到请求体/响应体
 - `--skip-git-repo-check` 也是必须的，否则会报"不在受信任目录"
-- 请求内容只有一个"回复 OK"，可以忽略不计的额度消耗
+- 请求内容是一道需要推理的题（见脚本里的 `PROBE_PROMPT`），会消耗**真实额度**。
+  题目故意出得需要思考，因为推理 token 数就是强度信号——题目太简单，这个信号就永远是 0
 
 ### 3. 从日志里分别提取两份模型名
 
@@ -406,7 +407,7 @@ ls "$LOCALAPPDATA/OpenAI/Codex/bin"/*/codex.exe
 # 2. 开 trace 跑一次最小请求
 cd /tmp
 RUST_LOG=trace "<codex.exe>" exec --skip-git-repo-check \
-    --model gpt-6-astra "Reply with exactly: OK" > /tmp/t.log 2>&1
+    --model gpt-6-astra "Think step by step, then reply with only the answer: the smallest n where n mod 7 = 3, n mod 11 = 5 and n mod 13 = 9" > /tmp/t.log 2>&1
 
 # 3. 看请求体
 grep -oE 'codex/responses: \{"model":"[^"]*"' /tmp/t.log
@@ -447,7 +448,7 @@ A: 本机没装 Codex，或者从没登录过。先在 Codex 里登录，再跑�
 
 **Q: 会不会消耗额度？**
 
-A: 会。每次运行发一个内容为"回复 OK"的极小请求。额度消耗可以忽略，但不是零。
+A: 会，而且比以前多。探测请求现在是一道需要推理的题，模型会真的思考，消耗的是可观额度而非"极小额度"——因为推理 token 数就是强度信号，题目太简单就测不出来。题目可以用 `PROBE_PROMPT` 换成你自己的。
 
 **Q: 开头的两个问题是什么？**
 
@@ -507,7 +508,7 @@ A: 不能。目前只检测 Codex（桌面版 / CLI）的请求。网页版走�
 
 这个工具**只负责报告，不负责修复**——因为从客户端这一侧，修不了。
 
-**5. 每次运行消耗一次极小额度**
+**5. 每次运行消耗一次真实额度**
 
 见上文。
 
@@ -835,14 +836,14 @@ The server tells the client it is routing to Astra, and then returns a body that
     5) gpt-5.3-codex-spark    legacy codex model
     6) custom (type a model name)
 
-    0) use the default from config.toml (gpt-6-astra)
+    press Enter = use the config model: gpt-6-astra
 
   enter a number: 1
 
   model to test: gpt-6-astra
 
-  Sending one minimal request through the current account...
-  Please wait (about 20-60 seconds, uses one tiny request).
+  Sending a reasoning request through the current account...
+  Please wait (reasoning takes 1-3 minutes; this spends real quota).
 
 --------------------------------------------------
   account used for this request:
@@ -883,12 +884,12 @@ The hash directory changes with every version, so the script always takes **the 
 ### 2. Run one minimal request with tracing on
 
 ```bash
-RUST_LOG=trace codex exec --skip-git-repo-check --model gpt-6-astra "Reply with exactly: OK"
+RUST_LOG=trace codex exec --skip-git-repo-check --model gpt-6-astra "Think step by step, then reply with only the answer: the smallest n where n mod 7 = 3, n mod 11 = 5 and n mod 13 = 9"
 ```
 
 - `RUST_LOG=trace` is **mandatory** — without it the request and response bodies are not logged
 - `--skip-git-repo-check` is also mandatory, otherwise Codex refuses to run outside a trusted directory
-- The request is a single "reply OK". Its quota cost is negligible
+- The request is a reasoning task. Its quota cost is real, not negligible
 
 ### 3. Extract the two model names separately
 
@@ -1084,7 +1085,7 @@ ls "$LOCALAPPDATA/OpenAI/Codex/bin"/*/codex.exe
 # 2. run one minimal request with tracing
 cd /tmp
 RUST_LOG=trace "<codex.exe>" exec --skip-git-repo-check \
-    --model gpt-6-astra "Reply with exactly: OK" > /tmp/t.log 2>&1
+    --model gpt-6-astra "Think step by step, then reply with only the answer: the smallest n where n mod 7 = 3, n mod 11 = 5 and n mod 13 = 9" > /tmp/t.log 2>&1
 
 # 3. the request body
 grep -oE 'codex/responses: \{"model":"[^"]*"' /tmp/t.log
@@ -1123,7 +1124,7 @@ Codex is not installed, or has never been signed in on this machine.
 
 **Does it cost quota?**
 
-Yes — one `Reply with exactly: OK` per run. Negligible, but not zero.
+Yes, and more than it used to. The probe is now a reasoning task, so the model actually thinks and the run costs real quota rather than a negligible amount — the reasoning-token count is the strength signal, and a trivial prompt never produces one. Swap the task with `PROBE_PROMPT`.
 
 **What are the two questions at the start?**
 
@@ -1183,7 +1184,7 @@ The only reason this tool still works is that the `model` field in the response 
 
 This tool **reports; it does not fix** — because from the client side, there is nothing to fix.
 
-**5. Each run costs one tiny request**
+**5. Each run costs one real request**
 
 See above.
 

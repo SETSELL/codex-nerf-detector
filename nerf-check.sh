@@ -32,8 +32,27 @@ WORKDIR="/tmp/codexcheck"
 RECORD="$SELF_DIR/check-records.txt"
 
 # Seconds allowed per model before the run is abandoned and marked as a
-# timeout. A normal request takes 20-60s.
-PER_MODEL_TIMEOUT="${PER_MODEL_TIMEOUT:-180}"
+# timeout. A reasoning prompt takes noticeably longer than a trivial one.
+PER_MODEL_TIMEOUT="${PER_MODEL_TIMEOUT:-300}"
+
+# The prompt every model is asked.
+#
+# It has to make the model actually think. The reasoning-token count is the
+# strength signal, and a prompt with nothing to reason about never produces
+# one - the old "Reply with exactly: OK" came back with 0 reasoning tokens
+# on every run, so the 518n-2 staircase this tool talks about could never
+# appear in its own output.
+#
+# Tune this to taste; a harder task uses more tokens and separates a capped
+# model from a healthy one more clearly. Override without editing:
+#   PROBE_PROMPT="your own task" ./nerf-check.sh
+DEFAULT_PROMPT='Think step by step, showing every intermediate step.
+Find the smallest positive integer n such that all three hold:
+  n mod 7  = 3
+  n mod 11 = 5
+  n mod 13 = 9
+Reply with only n.'
+PROBE_PROMPT="${PROBE_PROMPT:-$DEFAULT_PROMPT}"
 
 # ------------------------------------------------------------
 # Portability helpers (Windows Git Bash / macOS / Linux)
@@ -103,7 +122,9 @@ find_codex() {
 # ============================================================
 # 1. LANGUAGE
 # ============================================================
-clear 2>/dev/null
+# Only clear when stdout is a real terminal. Piped or redirected output
+# would otherwise start with the clear escape sequences.
+[ -t 1 ] && clear 2>/dev/null
 echo "=================================================="
 echo "            Codex Nerf Detector"
 echo "=================================================="
@@ -131,14 +152,18 @@ T_M0="退出"
 T_PICK="输入序号后回车： "
 T_PICKMODEL="选择要检测的模型"
 T_CUSTOM="自定义（手动输入模型名）"
+T_ENTER_DEFAULT="直接回车 = 用配置的模型"
 T_Q_ASK="输入序号： "
 T_Q_NAME="模型名： "
 T_ASKING="正在通过当前账号发送请求..."
-T_WAIT="请稍候（约 20~60 秒，消耗一次极小额度）"
+T_WAIT="请稍候（推理需要 1~3 分钟，会消耗真实额度）"
 T_ACCT_USED="本次使用的账号"
 T_PLAN="账号等级"
 T_LIMIT="当前限制档"
-T_CREDITS="额度余额"
+T_CREDITS="付费额度余额"
+T_PLANQUOTA="套餐额度"
+T_REMAIN="剩余"
+T_MIN="分钟"
 T_RESET="额度重置倒计时"
 T_REQUESTED="请求的模型"
 T_SERVED="响应里的模型"
@@ -155,6 +180,26 @@ T_HINT_CONFLICT="← ⚠️ 服务器说它路由到这里，响应里却找不�
 T_TTFT="首字延迟"
 T_QUEUE="引擎排队"
 T_RTOK="推理 token"
+T_TIER="档位"
+T_TIER_F="旗舰"
+T_TIER_H="高档"
+T_TIER_M="中档"
+T_TIER_L="低档"
+T_TIER_C="廉价"
+T_TIER_X="未知"
+T_STRENGTH="实测强度"
+T_ELAPSED="耗时"
+T_TOK="tok"
+T_STAIR="← 命中 518n-2 阶梯"
+T_STRONG="← 推理充分"
+T_SEC="秒"
+T_DROP="↓ 掉"
+T_UP="↑ 高"
+T_TIERS="档"
+T_STG_START="启动中"
+T_STG_CONN="已连接"
+T_STG_SENT="请求已发出"
+T_STG_ROUTED="已收到响应头，服务端路由到"
 T_REPORT="检测报告"
 T_G_FULL="满血"
 T_G_DILUTED="掺水"
@@ -163,9 +208,10 @@ T_BASIS="判断依据"
 T_B1="请求体里写的是（你要的）"
 T_B2="响应体里返回的是（实际用的）"
 T_B3="服务器自己声明的路由"
-T_B4="账号额度余额"
+T_B4="付费额度余额"
 T_B5="额度重置倒计时"
-T_CAUSE_CREDITS="账号额度已耗尽 —— 这是旗舰模型被降级的直接原因"
+T_CAUSE_CREDITS="套餐额度已耗尽 —— 这是旗舰模型被降级的直接原因"
+T_CAUSE_NOCREDITS="套餐额度还有余量，但付费额度余额为 0 —— 旗舰模型可能只认付费额度，这一档被挡在外面"
 T_CAUSE_UNKNOWN="额度正常，但请求仍被降级 —— 原因不明，这种情况反而更可疑"
 T_CONC_FULL="结论：你请求的模型正常服务，没有掺假。"
 T_CONC_DILUTED="结论：你请求的模型有参与，但同一个请求里混进了别的模型 —— 不稳定。"
@@ -209,6 +255,7 @@ T_NOMODELS="模型缓存里没找到模型清单。"
 T_NOCACHE="找不到 models_cache.json —— 先运行一次 Codex，让它拉取模型目录。"
 T_NOSELECT="没有选择模型。"
 T_ERR_REQUEST="请求失败（退出码"
+T_ERR_CLOSE="）"
 T_ERR_COMMON="常见原因："
 T_ERR_R1="这个账号没有该模型的权限（免费号通常只有 gpt-5.6-terra）"
 T_ERR_R2="模型名写错"
@@ -231,14 +278,18 @@ T_M0="quit"
 T_PICK="enter a number: "
 T_PICKMODEL="choose the model to test"
 T_CUSTOM="custom (type a model name)"
+T_ENTER_DEFAULT="press Enter = use the config model"
 T_Q_ASK="enter a number: "
 T_Q_NAME="model name: "
 T_ASKING="Sending a request through the current account..."
-T_WAIT="Please wait (about 20-60 seconds, uses one tiny request)"
+T_WAIT="Please wait (reasoning takes 1-3 minutes; this spends real quota)"
 T_ACCT_USED="account used"
 T_PLAN="plan"
 T_LIMIT="active limit"
-T_CREDITS="credits balance"
+T_CREDITS="credit balance"
+T_PLANQUOTA="plan window"
+T_REMAIN="left"
+T_MIN="min"
 T_RESET="credits reset in"
 T_REQUESTED="requested model"
 T_SERVED="response model(s)"
@@ -255,6 +306,26 @@ T_HINT_CONFLICT="<- WARNING: the server says it routed here, but this model is n
 T_TTFT="first token"
 T_QUEUE="engine queue"
 T_RTOK="reasoning tokens"
+T_TIER="tier"
+T_TIER_F="flagship"
+T_TIER_H="high"
+T_TIER_M="mid"
+T_TIER_L="low"
+T_TIER_C="cheap"
+T_TIER_X="unknown"
+T_STRENGTH="strength"
+T_ELAPSED="elapsed"
+T_TOK="tok"
+T_STAIR="<- on the 518n-2 staircase"
+T_STRONG="<- reasoning ran freely"
+T_SEC="s"
+T_DROP="down"
+T_UP="up"
+T_TIERS="tier(s)"
+T_STG_START="starting"
+T_STG_CONN="connected"
+T_STG_SENT="request sent"
+T_STG_ROUTED="headers in, server routing to"
 T_REPORT="REPORT"
 T_G_FULL="FULL"
 T_G_DILUTED="DILUTED"
@@ -263,9 +334,10 @@ T_BASIS="how this was decided"
 T_B1="request body says (what you asked for)"
 T_B2="response body says (what actually served)"
 T_B3="the server's own routing hint"
-T_B4="account credits balance"
+T_B4="credit balance"
 T_B5="credits reset in"
-T_CAUSE_CREDITS="account credits are exhausted - this is the direct cause of the flagship being rerouted"
+T_CAUSE_CREDITS="the plan window is exhausted - this is the direct cause of the flagship being rerouted"
+T_CAUSE_NOCREDITS="the plan window still has room, but the credit balance is 0 - the flagship may draw only on credits, and that is what it is being kept out of"
 T_CAUSE_UNKNOWN="credits look fine, yet the request was still rerouted - cause unknown, and that is the more suspicious case"
 T_CONC_FULL="Conclusion: the model you asked for served you, with nothing else mixed in."
 T_CONC_DILUTED="Conclusion: your model took part, but other models were mixed into the same request - unstable."
@@ -309,6 +381,7 @@ T_NOMODELS="No models found in the cache."
 T_NOCACHE="models_cache.json not found - run Codex once so it fetches the model catalog."
 T_NOSELECT="no model selected."
 T_ERR_REQUEST="request failed (exit code"
+T_ERR_CLOSE=")"
 T_ERR_COMMON="Common causes:"
 T_ERR_R1="this account has no access to that model (free accounts usually only get gpt-5.6-terra)"
 T_ERR_R2="the model name is wrong"
@@ -526,6 +599,198 @@ show_model_rows() {
         }'
 }
 
+# ------------------------------------------------------------
+# Tier: a positional ranking, "L5" = top of the catalog.
+# ------------------------------------------------------------
+# The catalog is already ordered flagship-first (see the comment above), so
+# how far a model sits from the top is the only strength ranking available
+# here. It is relative to whatever the catalog currently lists: add a model
+# and every number below it shifts.
+tier_rank() {
+    local pos
+    pos=$(echo "$MODEL_LIST" | grep -nxF "$1" 2>/dev/null | head -1 | cut -d: -f1)
+    [ -n "$pos" ] || return 0
+    echo "L$((NMODELS - pos + 1))"
+}
+
+tier_name() {
+    local pos l
+    pos=$(echo "$MODEL_LIST" | grep -nxF "$1" 2>/dev/null | head -1 | cut -d: -f1)
+    [ -n "$pos" ] || { echo "$T_TIER_X"; return 0; }
+    l=$((NMODELS - pos + 1))
+    if   [ "$l" -ge "$NMODELS" ];     then echo "$T_TIER_F"
+    elif [ "$l" -le 1 ];              then echo "$T_TIER_C"
+    elif [ "$l" -ge $((NMODELS - 1)) ]; then echo "$T_TIER_H"
+    elif [ "$l" -le 2 ];              then echo "$T_TIER_L"
+    else                                   echo "$T_TIER_M"
+    fi
+}
+
+# The community data behind this tool shows reasoning terminating in a
+# 518n-2 staircase: 516, 1034, 1552, 2070. Landing exactly on one of those
+# is the shape of a budget closing a door, not a model finishing its
+# thought - so it is flagged rather than reported as a plain number.
+on_staircase() {
+    case "$1" in
+        516|1034|1552|2070) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+# Is the subscription's own window actually spent?
+# Prints 1 (spent), 0 (fine), or nothing when the response does not say.
+# The websocket message carries explicit allowed/limit_reached flags; the
+# older header shape carries neither, so fall back to the used percentage
+# there rather than guessing.
+window_spent() {
+    case "$R_LIMREACHED" in
+        true)  echo 1; return 0 ;;
+        false) echo 0; return 0 ;;
+    esac
+    case "$R_ALLOWED" in
+        false) echo 1; return 0 ;;
+        true)  echo 0; return 0 ;;
+    esac
+    case "$R_USEDPCT" in
+        ''|*[!0-9]*) return 0 ;;
+        *) [ "$R_USEDPCT" -ge 100 ] && echo 1 || echo 0 ;;
+    esac
+}
+
+# ------------------------------------------------------------
+# Result table
+# ------------------------------------------------------------
+# model / tier / measured strength / what actually served / elapsed time.
+# Two lines per row: the numbers stay scannable on the first, and the
+# second carries the reading - tier name, staircase hit, tier delta.
+# Pad to a display width, not a character count.
+# printf's %-Ns counts characters, so "模型" padded with %-20s comes out 22
+# columns wide while "gpt-6-astra" comes out 20 - the whole table skews.
+# wc -L counts columns and knows a CJK character is two of them.
+pad() {
+    local s="$1" w="$2" cur
+    printf '%s' "$s"
+    # BSD wc pads its output with spaces - strip before comparing, or the
+    # arithmetic test errors out on macOS and the padding silently vanishes.
+    cur=$(printf '%s' "$s" | wc -L 2>/dev/null | tr -d '[:space:]')
+    [ -n "$cur" ] && [ "$cur" -lt "$w" ] && printf '%*s' "$((w - cur))" ""
+    return 0
+}
+
+# ------------------------------------------------------------
+# Progress
+# ------------------------------------------------------------
+# Overall completion is knowable - it is finished requests over total
+# requests - so the sweep draws a real bar from it.
+sweep_bar() {
+    local d="$1" tot="$2" w=24 filled
+    [ "$tot" -gt 0 ] || { printf ""; return 0; }
+    filled=$(( d * w / tot ))
+    printf "[%s%s] %d/%d %d%%" \
+        "$(printf '%*s' "$filled" '' | tr ' ' '#')" \
+        "$(printf '%*s' "$((w - filled))" '' | tr ' ' '.')" \
+        "$d" "$tot" "$(( d * 100 / tot ))"
+}
+
+# Within one request there is no percentage to show - the stream never
+# reports how far along it is - so this shows what has actually arrived
+# in the log (a real stage) plus how long it has been running, rather
+# than a bar that would be inventing its own progress.
+# Sets R_ELAPSED. Returns the command's exit status.
+SPIN_FRAMES='|/-\'
+run_probe() {
+    local m="$1" prefix="$2"
+    local pid rc t0 elapsed spin=0 stage hint recent
+
+    # Piped or redirected: no animation, no escape sequences in the output.
+    if [ ! -t 1 ]; then
+        t0=$(date +%s)
+        RUST_LOG=trace run_timed "$PER_MODEL_TIMEOUT" "$CODEX" exec --skip-git-repo-check --model "$m" \
+            "$PROBE_PROMPT" < /dev/null > "$LOG" 2>&1
+        rc=$?
+        R_ELAPSED=$(( $(date +%s) - t0 ))
+        return "$rc"
+    fi
+
+    RUST_LOG=trace run_timed "$PER_MODEL_TIMEOUT" "$CODEX" exec --skip-git-repo-check --model "$m" \
+        "$PROBE_PROMPT" < /dev/null > "$LOG" 2>&1 &
+    pid=$!
+    t0=$(date +%s)
+
+    while kill -0 "$pid" 2>/dev/null; do
+        elapsed=$(( $(date +%s) - t0 ))
+        # Only the tail - the trace log runs to megabytes.
+        recent=$(tail -c 40000 "$LOG" 2>/dev/null)
+        hint=$(echo "$recent" | grep -oE 'x-codex-routing-hint: *model=[0-9a-zA-Z.-]+' | head -1 | sed 's/.*model=//')
+        if   [ -n "$hint" ];                              then stage="$T_STG_ROUTED $hint"
+        elif echo "$recent" | grep -q 'api\.path="/responses"'; then stage="$T_STG_SENT"
+        elif [ -s "$LOG" ];                               then stage="$T_STG_CONN"
+        else                                                   stage="$T_STG_START"
+        fi
+        printf '\r\033[K  %s%s %s  %ds' \
+            "$prefix" "${SPIN_FRAMES:$(( spin % 4 )):1}" "$stage" "$elapsed"
+        spin=$(( spin + 1 ))
+        sleep 0.3
+    done
+
+    wait "$pid"; rc=$?
+    R_ELAPSED=$(( $(date +%s) - t0 ))
+    printf '\r\033[K'
+    return "$rc"
+}
+
+result_header() {
+    printf "  "
+    pad "$T_MODEL" 20;    printf " "
+    pad "$T_TIER" 6;      printf " "
+    pad "$T_STRENGTH" 12; printf " "
+    pad "$T_GOT" 20;      printf " "
+    pad "$T_ELAPSED" 7;   printf " "
+    printf "%s\n" "$T_VERDICT"
+    echo "  ----------------------------------------------------------------------------------------"
+}
+
+# result_row <requested> <served> <reasoning-tokens> <elapsed-seconds> <verdict> [extra]
+result_row() {
+    local m="$1" got="$2" rtok="$3" el="$4" vd="$5" extra="$6"
+    local rank name note wr gr wl gl
+
+    rank=$(tier_rank "$m"); [ -n "$rank" ] || rank="?"
+
+    printf "  "
+    pad "$m" 20;                printf " "
+    pad "$rank" 6;              printf " "
+    pad "${rtok:-?} $T_TOK" 12; printf " "
+    pad "${got:--}" 20;         printf " "
+    pad "${el:-?}$T_SEC" 7;     printf " "
+    printf "%s\n" "${vd:--}"
+
+    note=$(tier_name "$m")
+    # 2070 is the highest step of the documented staircase, so anything
+    # past it is reasoning that clearly was not cut short.
+    case "$rtok" in
+        ''|*[!0-9]*) ;;
+        *) if on_staircase "$rtok"; then
+               note="$note   $T_STAIR"
+           elif [ "$rtok" -gt 2070 ]; then
+               note="$note   $T_STRONG"
+           fi ;;
+    esac
+
+    # Only meaningful when both ends are in the catalog and the answer is a
+    # single model - a diluted response lists several, joined with "+".
+    wr=$(tier_rank "$m"); gr=$(tier_rank "$got")
+    if [ -n "$wr" ] && [ -n "$gr" ] && [ "$wr" != "$gr" ]; then
+        wl=${wr#L}; gl=${gr#L}
+        if [ "$gl" -lt "$wl" ]; then note="$note   $T_DROP $((wl-gl)) $T_TIERS"
+        else                         note="$note   $T_UP $((gl-wl)) $T_TIERS"
+        fi
+    fi
+
+    [ -n "$extra" ] && note="$note   $extra"
+    printf "  %-20s %-6s %s\n" "" "" "$note"
+}
+
 # ============================================================
 # 4. SESSION INFO
 # ============================================================
@@ -549,20 +814,28 @@ echo
 # sets: R_WANTED R_GOT R_MARK R_VERDICT
 run_one_model() {
     local M="$1"
+    R_ELAPSED=""
     rm -f "$LOG"
     mkdir -p "$WORKDIR" && cd "$WORKDIR" || return 1
 
     # Hard cap per model. A request normally finishes in 20-60s, but a
     # slow route plus a websocket retry can push it past that, and a whole
     # sweep hanging on one model for ten minutes looks like a crash.
-    RUST_LOG=trace run_timed "$PER_MODEL_TIMEOUT" "$CODEX" exec --skip-git-repo-check --model "$M" \
-        "Reply with exactly: OK" < /dev/null > "$LOG" 2>&1
-    local rc=$?
+    local rc
+    run_probe "$M" "$PROBE_PREFIX"
+    rc=$?
 
     R_WANTED="$M"
     R_GOT=""
     R_MARK=""
     R_VERDICT=""
+    # Clear everything the previous model left behind. The timeout and
+    # error paths return before these are filled in, so without this a
+    # failed run would be reported with the last good run's numbers.
+    R_PLAN=""; R_CREDITS=""; R_HASCRED=""; R_LIMIT=""
+    R_RESET=""; R_RESET_TXT=""; R_CAUSE=""
+    R_ALLOWED=""; R_LIMREACHED=""; R_USEDPCT=""; R_WINDOW=""
+    R_HINT=""; R_TTFT=""; R_QUEUE=""; R_RTOK=""
     R_EMAIL=$(grep -oE 'user\.email="[^"]*"' "$LOG" 2>/dev/null | head -1 | sed 's/user\.email="//; s/"$//')
 
     if [ "$rc" -eq 124 ]; then
@@ -591,25 +864,68 @@ run_one_model() {
              | head -1 | sed 's/.*://')
     R_QUEUE=$(grep -oE '"engine_queue_max_ms":[0-9.]+' "$LOG" 2>/dev/null \
               | head -1 | sed 's/.*://')
+    # Take the last usage block, not the first: a warmup turn can report
+    # its own zeros before the answer that actually gets billed.
     R_RTOK=$(grep -oE '"reasoning_tokens":[0-9]+' "$LOG" 2>/dev/null \
-             | head -1 | sed 's/.*://')
+             | tail -1 | sed 's/.*://')
     [ -n "$R_RTOK" ] || R_RTOK=$(grep -oE '"first_sampled_message_reasoning_tokens":[0-9]+' "$LOG" 2>/dev/null \
              | head -1 | sed 's/.*://')
 
-    # Account tier and quota state. These live in the response headers and
-    # explain far more than the model name does: a Pro account with zero
-    # credits is exactly the setup in which the flagship gets rerouted to a
-    # cheap model while everything below it is served honestly.
-    R_PLAN=$(grep -oE '"x-codex-plan-type": *"[^"]*"' "$LOG" 2>/dev/null \
-             | head -1 | sed 's/.*: *"//; s/"$//')
-    R_CREDITS=$(grep -oE '"x-codex-credits-balance": *"[^"]*"' "$LOG" 2>/dev/null \
-             | head -1 | sed 's/.*: *"//; s/"$//')
-    R_HASCRED=$(grep -oE '"x-codex-credits-has-credits": *"[^"]*"' "$LOG" 2>/dev/null \
-             | head -1 | sed 's/.*: *"//; s/"$//')
+    # Account tier and quota state. These explain far more than the model
+    # name does: a Pro account with zero credits is exactly the setup in
+    # which the flagship gets rerouted to a cheap model while everything
+    # below it is served honestly.
+    #
+    # Codex used to send this as x-codex-* HTTP headers. Current builds
+    # push a single codex.rate_limits message over the response websocket
+    # instead, so read that shape first and fall back to the old headers
+    # for older builds. Without the new shape the whole block goes quiet
+    # and the report silently loses its "why".
+    #
+    #   {"type":"codex.rate_limits","plan_type":"pro","rate_limits":{...},
+    #    "credits":{"has_credits":false,"unlimited":false,"balance":"0"}}
+    RL=$(grep -oE '\{"type":"codex\.rate_limits".{0,800}' "$LOG" 2>/dev/null | head -1)
+
+    # Two separate pools, and they must not be conflated:
+    #   plan window  - the subscription's own weekly quota (what gates
+    #                  normal use; "used_percent":1 means 99% still free)
+    #   credits      - a separate purchased pot some tiers draw on
+    # A Pro account with a full plan window and an empty credit pot is the
+    # normal state for anyone who is not buying extra credits. Calling that
+    # "quota exhausted" while 99% of the window is unused is simply wrong.
+    if [ -n "$RL" ]; then
+        R_PLAN=$(echo "$RL"       | grep -oE '"plan_type":"[^"]*"'            | head -1 | sed 's/.*:"//; s/"$//')
+        R_CREDITS=$(echo "$RL"    | grep -oE '"balance":"[^"]*"'              | head -1 | sed 's/.*:"//; s/"$//')
+        R_HASCRED=$(echo "$RL"    | grep -oE '"has_credits":(true|false)'     | head -1 | sed 's/.*://')
+        R_RESET=$(echo "$RL"      | grep -oE '"reset_after_seconds":[0-9]+'   | head -1 | sed 's/.*://')
+        R_ALLOWED=$(echo "$RL"    | grep -oE '"allowed":(true|false)'         | head -1 | sed 's/.*://')
+        R_LIMREACHED=$(echo "$RL" | grep -oE '"limit_reached":(true|false)'   | head -1 | sed 's/.*://')
+        R_USEDPCT=$(echo "$RL"    | grep -oE '"used_percent":[0-9]+'          | head -1 | sed 's/.*://')
+        R_WINDOW=$(echo "$RL"     | grep -oE '"window_minutes":[0-9]+'        | head -1 | sed 's/.*://')
+    fi
+
+    [ -n "$R_PLAN" ]    || R_PLAN=$(grep -oE '"x-codex-plan-type": *"[^"]*"' "$LOG" 2>/dev/null \
+                                    | head -1 | sed 's/.*: *"//; s/"$//')
+    [ -n "$R_CREDITS" ] || R_CREDITS=$(grep -oE '"x-codex-credits-balance": *"[^"]*"' "$LOG" 2>/dev/null \
+                                    | head -1 | sed 's/.*: *"//; s/"$//')
+    [ -n "$R_HASCRED" ] || R_HASCRED=$(grep -oE '"x-codex-credits-has-credits": *"[^"]*"' "$LOG" 2>/dev/null \
+                                    | head -1 | sed 's/.*: *"//; s/"$//')
+    [ -n "$R_RESET" ]   || R_RESET=$(grep -oE '"x-codex-primary-reset-after-seconds": *"[^"]*"' "$LOG" 2>/dev/null \
+                                    | head -1 | sed 's/.*: *"//; s/"$//')
+    [ -n "$R_USEDPCT" ] || R_USEDPCT=$(grep -oE '"x-codex-primary-used-percent": *"[^"]*"' "$LOG" 2>/dev/null \
+                                    | head -1 | sed 's/.*: *"//; s/"$//')
+    [ -n "$R_WINDOW" ]  || R_WINDOW=$(grep -oE '"x-codex-primary-window-minutes": *"[^"]*"' "$LOG" 2>/dev/null \
+                                    | head -1 | sed 's/.*: *"//; s/"$//')
     R_LIMIT=$(grep -oE '"x-codex-active-limit": *"[^"]*"' "$LOG" 2>/dev/null \
-             | head -1 | sed 's/.*: *"//; s/"$//')
-    R_RESET=$(grep -oE '"x-codex-primary-reset-after-seconds": *"[^"]*"' "$LOG" 2>/dev/null \
-             | head -1 | sed 's/.*: *"//; s/"$//')
+              | head -1 | sed 's/.*: *"//; s/"$//')
+
+    # The websocket message spells it true/false, the old header True/False.
+    # Normalise so the credits test below only has to know one spelling.
+    case "$R_HASCRED" in
+        true|True)   R_HASCRED="True" ;;
+        false|False) R_HASCRED="False" ;;
+    esac
+
     if [ -n "$R_RESET" ]; then
         R_RESET_D=$((R_RESET / 86400))
         R_RESET_H=$(( (R_RESET % 86400) / 3600 ))
@@ -636,9 +952,14 @@ run_one_model() {
         fi
     else
         R_MARK="XX"; R_VERDICT="$T_G_DOWN"
-        # Explain *why*, when the headers happen to tell us.
-        if [ "$R_HASCRED" = "False" ] || [ "$R_CREDITS" = "0" ]; then
+        # Explain *why*, when the response tells us. Check the plan window
+        # first - that is the pool which actually gates normal use, and it
+        # is the one a reader will look at. Only when it is genuinely spent
+        # does "quota exhausted" describe anything.
+        if [ "$(window_spent)" = "1" ]; then
             R_CAUSE="$T_CAUSE_CREDITS"
+        elif [ "$R_HASCRED" = "False" ] || [ "$R_CREDITS" = "0" ]; then
+            R_CAUSE="$T_CAUSE_NOCREDITS"
         else
             R_CAUSE="$T_CAUSE_UNKNOWN"
         fi
@@ -647,15 +968,24 @@ run_one_model() {
 }
 
 show_one_result() {
+    local pq
     echo "--------------------------------------------------"
     echo "  $T_ACCT_USED  : ${R_EMAIL:-?}"
     [ -n "$R_PLAN" ]    && echo "  $T_PLAN       : $R_PLAN"
+    # The plan window is the pool a reader will check first, so it is shown
+    # before the credit balance rather than after it.
+    case "$R_USEDPCT" in
+        ''|*[!0-9]*) ;;
+        *) pq="$T_REMAIN $((100 - R_USEDPCT))%"
+           [ -n "$R_WINDOW" ] && pq="$pq   ($R_WINDOW $T_MIN)"
+           echo "  $T_PLANQUOTA  : $pq" ;;
+    esac
     [ -n "$R_LIMIT" ]   && echo "  $T_LIMIT      : $R_LIMIT"
     [ -n "$R_CREDITS" ] && echo "  $T_CREDITS    : $R_CREDITS   (has-credits=${R_HASCRED:-?})"
     [ -n "$R_RESET_TXT" ] && echo "  $T_RESET      : $R_RESET_TXT"
     echo
-    echo "  $T_REQUESTED  : $R_WANTED"
-    echo "  $T_SERVED     : $R_GOT"
+    result_header
+    result_row "$R_WANTED" "$R_GOT" "$R_RTOK" "$R_ELAPSED" "[$R_MARK] $R_VERDICT"
     echo "--------------------------------------------------"
     echo
     echo "================================================================================"
@@ -726,7 +1056,10 @@ case "$ACT" in
     n=$((NMODELS+1))
     printf "    %d) %s\n" "$n" "$T_CUSTOM"
     echo
-    echo "    0) ${CFGMODEL:-?}"
+    # The config model used to be listed here as "0)". It is nearly always
+    # one of the rows above already, so it read as a duplicate entry - and
+    # "0" means something else entirely in the main menu. Enter selects it.
+    echo "    $T_ENTER_DEFAULT: ${CFGMODEL:-?}"
     echo
     echo -n "  $T_Q_ASK"; read CH
 
@@ -748,12 +1081,13 @@ case "$ACT" in
     echo "  $T_ASKING"
     echo "  $T_WAIT"
     echo
+    PROBE_PREFIX=""
     if run_one_model "$TESTMODEL"; then
         show_one_result
         record_one
         echo "  $T_RECORD : $RECORD"
     else
-        echo "  [ERROR] $T_ERR_REQUEST $?)"
+        echo "  [ERROR] $T_ERR_REQUEST $?$T_ERR_CLOSE"
         echo
         echo "  $T_ERR_COMMON"
         echo "    - $T_ERR_R1"
@@ -803,29 +1137,38 @@ case "$ACT" in
     echo
 
     SUM_W=(); SUM_G=(); SUM_M=(); SUM_V=(); SUM_HIT=(); SUM_TOT=()
+    SUM_R=(); SUM_E=()
     i=0
+    SWEEP_TOTAL=$((NMODELS * REPEATS)); SWEEP_DONE=0
     while read -r m; do
         [ -n "$m" ] || continue
         i=$((i+1))
-        printf "  [%d/%d] %-20s " "$i" "$NMODELS" "$m"
 
-        hit=0; tot=0; lastgot=""; lastmark=""; lastverdict=""
+        hit=0; tot=0; lastgot=""; lastmark=""; lastverdict=""; lastrtok=""; lastelapsed=""
         for r in $(seq 1 "$REPEATS"); do
-            tot=$((tot+1))
+            tot=$((tot+1)); SWEEP_DONE=$((SWEEP_DONE+1))
+            # Overall completion is real, so it drives the bar; the live
+            # stage for the request in flight is added by run_probe.
+            PROBE_PREFIX="$(sweep_bar "$SWEEP_DONE" "$SWEEP_TOTAL")  $m  "
+            # No animation when the output is captured, so print the line
+            # the animation would have been drawing over.
+            [ -t 1 ] || printf "  [%d/%d] %-20s " "$SWEEP_DONE" "$SWEEP_TOTAL" "$m"
             if run_one_model "$m"; then
                 if [ "$R_MARK" = "OK" ]; then hit=$((hit+1)); fi
                 lastgot="$R_GOT"; lastmark="$R_MARK"; lastverdict="$R_VERDICT"
             else
                 lastgot="($R_VERDICT)"; lastmark="--"; lastverdict="$R_VERDICT"
             fi
+            lastrtok="$R_RTOK"; lastelapsed="$R_ELAPSED"
             record_one
-            [ "$r" -lt "$REPEATS" ] && printf "."
+            [ -t 1 ] || printf "[%s] %s\n" "$lastmark" "$lastverdict"
         done
 
-        if [ "$REPEATS" -gt 1 ]; then
-            printf "[%s] %s  (%d/%d OK)\n" "$lastmark" "$lastverdict" "$hit" "$tot"
-        else
-            printf "[%s] %s\n" "$lastmark" "$lastverdict"
+        # On a terminal the live line gets wiped, so leave a permanent one.
+        if [ -t 1 ]; then
+            printf "  [%d/%d] %-20s [%s] %s" "$i" "$NMODELS" "$m" "$lastmark" "$lastverdict"
+            [ "$REPEATS" -gt 1 ] && printf "  (%d/%d OK)" "$hit" "$tot"
+            echo
         fi
 
         SUM_W[$i]="$m"
@@ -834,21 +1177,22 @@ case "$ACT" in
         SUM_V[$i]="$lastverdict"
         SUM_HIT[$i]="$hit"
         SUM_TOT[$i]="$tot"
+        SUM_R[$i]="$lastrtok"
+        SUM_E[$i]="$lastelapsed"
     done <<< "$MODEL_LIST"
 
     echo
     echo "================================================================================"
     echo "            $T_SUMMARY"
     echo "================================================================================"
-    printf "  %-20s %-22s %-24s %s\n" "$T_MODEL" "$T_ASKED" "$T_GOT" "$T_VERDICT"
-    echo "  ------------------------------------------------------------------------------"
+    result_header
     for j in $(seq 1 ${#SUM_W[@]}); do
-        printf "  %-20s %-22s %-24s [%s] %s" \
-            "${SUM_W[$j]}" "${SUM_W[$j]}" "${SUM_G[$j]:--}" "${SUM_M[$j]}" "${SUM_V[$j]}"
+        sx=""
         if [ "${SUM_TOT[$j]}" -gt 1 ]; then
-            printf "  %d/%d OK" "${SUM_HIT[$j]}" "${SUM_TOT[$j]}"
+            sx="${SUM_HIT[$j]}/${SUM_TOT[$j]} OK"
         fi
-        echo
+        result_row "${SUM_W[$j]}" "${SUM_G[$j]}" "${SUM_R[$j]}" "${SUM_E[$j]}" \
+                   "[${SUM_M[$j]}] ${SUM_V[$j]}" "$sx"
     done
     echo "================================================================================"
     echo

@@ -1,0 +1,15 @@
+# Line endings matter here.
+#
+# nerf-check.sh MUST stay LF. If git converts it to CRLF on checkout,
+# bash on Windows fails with "\r: command not found" on every line.
+# This is the single most common way a Windows shell script gets
+# silently broken by a repo.
+
+*.sh        text eol=lf
+*.bat       text eol=crlf
+*.cmd       text eol=crlf
+*.md        text eol=lf
+*.txt       text eol=lf
+LICENSE     text eol=lf
+.gitignore  text eol=lf
+.gitattributes text eol=lf

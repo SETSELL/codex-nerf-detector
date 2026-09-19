@@ -1,0 +1,10 @@
+# Run output. Contains YOUR account email - never commit this.
+check-records.txt
+
+# Machine-specific path to bash.exe. Users create their own.
+bash-path.txt
+
+# Scratch
+*.tmp
+*.log
+*.bak

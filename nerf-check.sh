@@ -695,17 +695,34 @@ window_spent() {
 # model / tier / measured strength / what actually served / elapsed time.
 # Two lines per row: the numbers stay scannable on the first, and the
 # second carries the reading - tier name, staircase hit, tier delta.
-# Pad to a display width, not a character count.
-# printf's %-Ns counts characters, so "模型" padded with %-20s comes out 22
-# columns wide while "gpt-6-astra" comes out 20 - the whole table skews.
-# wc -L counts columns and knows a CJK character is two of them.
+# Display width, portably.
+#
+# wc -L is not usable here. GNU counts terminal columns; BSD/macOS counts
+# characters. "模型" comes back as 4 on Linux and 2 on macOS, so the table
+# would line up on one platform and skew on the other.
+#
+# For the ASCII and CJK these strings hold, every CJK character is a
+# three-byte UTF-8 sequence occupying two columns, so the column count is
+# just the byte count minus one per CJK character. Counting the 0xE0-0xEF
+# lead bytes gives exactly that, with no locale or wc dialect involved.
+disp_width() {
+    local s="$1" bytes lead
+    bytes=$(printf '%s' "$s" | LC_ALL=C wc -c 2>/dev/null | tr -d '[:space:]')
+    lead=$(printf '%s' "$s" | LC_ALL=C tr -dc '\340-\357' 2>/dev/null \
+           | LC_ALL=C wc -c 2>/dev/null | tr -d '[:space:]')
+    case "$bytes" in ''|*[!0-9]*) bytes=0 ;; esac
+    case "$lead"  in ''|*[!0-9]*) lead=0 ;; esac
+    echo $(( bytes - lead ))
+}
+
+# Pad to a display width, not a character count. printf's %-Ns counts
+# characters, so "模型" padded with %-20s comes out 22 columns wide while
+# "gpt-6-astra" comes out 20 - the whole table skews by two per CJK glyph.
 pad() {
     local s="$1" w="$2" cur
     printf '%s' "$s"
-    # BSD wc pads its output with spaces - strip before comparing, or the
-    # arithmetic test errors out on macOS and the padding silently vanishes.
-    cur=$(printf '%s' "$s" | wc -L 2>/dev/null | tr -d '[:space:]')
-    [ -n "$cur" ] && [ "$cur" -lt "$w" ] && printf '%*s' "$((w - cur))" ""
+    cur=$(disp_width "$s")
+    [ "$cur" -lt "$w" ] && printf '%*s' "$((w - cur))" ""
     return 0
 }
 

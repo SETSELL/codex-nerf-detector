@@ -200,6 +200,11 @@ T_STG_START="启动中"
 T_STG_CONN="已连接"
 T_STG_SENT="请求已发出"
 T_STG_ROUTED="已收到响应头，服务端路由到"
+T_EFFORT="思考强度"
+T_EFFORT_Q="思考强度范围："
+T_EFFORT_ONE="只测配置档"
+T_EFFORT_ALL="全部档位"
+T_EFFORT_TIMES="次请求"
 T_REPORT="检测报告"
 T_G_FULL="满血"
 T_G_DILUTED="掺水"
@@ -326,6 +331,11 @@ T_STG_START="starting"
 T_STG_CONN="connected"
 T_STG_SENT="request sent"
 T_STG_ROUTED="headers in, server routing to"
+T_EFFORT="effort"
+T_EFFORT_Q="Reasoning effort:"
+T_EFFORT_ONE="config level only"
+T_EFFORT_ALL="every level"
+T_EFFORT_TIMES="requests"
 T_REPORT="REPORT"
 T_G_FULL="FULL"
 T_G_DILUTED="DILUTED"
@@ -589,6 +599,28 @@ fi
 # plain slug list, same order, for the sweep loop
 MODEL_LIST=$(echo "$MODEL_TABLE" | cut -d'|' -f1 | grep -v '^$')
 
+# Which reasoning efforts each model accepts. They are not the same across
+# the catalog - gpt-5.5 stops at xhigh, the newer ones go to max, and only
+# some offer ultra - so the list is read per model rather than assumed.
+EFFORT_TABLE=$(awk '
+    /"slug": *"/ {
+        line = $0; sub(/.*"slug": *"/, "", line); sub(/".*/, "", line)
+        slug = line; lv = ""; next
+    }
+    slug != "" && /"effort": *"/ {
+        line = $0; sub(/.*"effort": *"/, "", line); sub(/".*/, "", line)
+        lv = (lv == "" ? line : lv " " line); next
+    }
+    slug != "" && lv != "" && /^[[:space:]]*\]/ {
+        print slug "|" lv; slug = ""; lv = ""
+    }
+' "$CACHE" 2>/dev/null)
+
+# "low medium high xhigh max" for one model, or empty if it is not listed.
+model_efforts() {
+    echo "$EFFORT_TABLE" | awk -F'|' -v s="$1" '$1 == s { print $2; exit }'
+}
+
 # "gpt-6-astra|GPT-6-Astra|Our most capable model..." -> print rows
 show_model_rows() {
     echo "$MODEL_TABLE" | awk -F'|' '
@@ -701,19 +733,26 @@ SPIN_FRAMES='|/-\'
 run_probe() {
     local m="$1" prefix="$2"
     local pid rc t0 elapsed spin=0 stage hint recent
+    local -a cmd
+
+    # -c overrides a value from config.toml for this run only, which is how
+    # the probe asks for a specific reasoning effort without editing the
+    # user's config. Left off entirely when no override is wanted, so the
+    # config default applies as before.
+    cmd=(run_timed "$PER_MODEL_TIMEOUT" "$CODEX" exec --skip-git-repo-check)
+    [ -n "$PROBE_EFFORT" ] && cmd+=(-c "model_reasoning_effort=\"$PROBE_EFFORT\"")
+    cmd+=(--model "$m" "$PROBE_PROMPT")
 
     # Piped or redirected: no animation, no escape sequences in the output.
     if [ ! -t 1 ]; then
         t0=$(date +%s)
-        RUST_LOG=trace run_timed "$PER_MODEL_TIMEOUT" "$CODEX" exec --skip-git-repo-check --model "$m" \
-            "$PROBE_PROMPT" < /dev/null > "$LOG" 2>&1
+        RUST_LOG=trace "${cmd[@]}" < /dev/null > "$LOG" 2>&1
         rc=$?
         R_ELAPSED=$(( $(date +%s) - t0 ))
         return "$rc"
     fi
 
-    RUST_LOG=trace run_timed "$PER_MODEL_TIMEOUT" "$CODEX" exec --skip-git-repo-check --model "$m" \
-        "$PROBE_PROMPT" < /dev/null > "$LOG" 2>&1 &
+    RUST_LOG=trace "${cmd[@]}" < /dev/null > "$LOG" 2>&1 &
     pid=$!
     t0=$(date +%s)
 
@@ -743,16 +782,17 @@ result_header() {
     printf "  "
     pad "$T_MODEL" 20;    printf " "
     pad "$T_TIER" 6;      printf " "
+    pad "$T_EFFORT" 8;    printf " "
     pad "$T_STRENGTH" 12; printf " "
     pad "$T_GOT" 20;      printf " "
     pad "$T_ELAPSED" 7;   printf " "
     printf "%s\n" "$T_VERDICT"
-    echo "  ----------------------------------------------------------------------------------------"
+    echo "  --------------------------------------------------------------------------------------------------"
 }
 
-# result_row <requested> <served> <reasoning-tokens> <elapsed-seconds> <verdict> [extra]
+# result_row <requested> <served> <reasoning-tokens> <elapsed-seconds> <verdict> <effort> [extra]
 result_row() {
-    local m="$1" got="$2" rtok="$3" el="$4" vd="$5" extra="$6"
+    local m="$1" got="$2" rtok="$3" el="$4" vd="$5" ef="$6" extra="$7"
     local rank name note wr gr wl gl
 
     rank=$(tier_rank "$m"); [ -n "$rank" ] || rank="?"
@@ -760,6 +800,7 @@ result_row() {
     printf "  "
     pad "$m" 20;                printf " "
     pad "$rank" 6;              printf " "
+    pad "${ef:--}" 8;           printf " "
     pad "${rtok:-?} $T_TOK" 12; printf " "
     pad "${got:--}" 20;         printf " "
     pad "${el:-?}$T_SEC" 7;     printf " "
@@ -795,6 +836,9 @@ result_row() {
 # 4. SESSION INFO
 # ============================================================
 CFGMODEL=$(grep -oE '^model *= *"[^"]*"' "$CONF" 2>/dev/null | head -1 | sed 's/.*"\(.*\)".*/\1/')
+# Left empty when the config does not pin one - then no -c override is
+# passed at all and Codex picks its own default for the model.
+CFGEFFORT=$(grep -oE '^model_reasoning_effort *= *"[^"]*"' "$CONF" 2>/dev/null | head -1 | sed 's/.*"\(.*\)".*/\1/')
 AUTH_MODE=$(grep -oE '"auth_mode": *"[^"]*"' "$AUTH" 2>/dev/null | head -1 | sed 's/.*"\(.*\)".*/\1/')
 ACCT_ID=$(grep -oE '"account_id": *"[^"]*"' "$AUTH" 2>/dev/null | head -1 | sed 's/.*"\([^"]*\)"$/\1/')
 NMODELS=$(echo "$MODEL_LIST" | grep -c .)
@@ -985,7 +1029,7 @@ show_one_result() {
     [ -n "$R_RESET_TXT" ] && echo "  $T_RESET      : $R_RESET_TXT"
     echo
     result_header
-    result_row "$R_WANTED" "$R_GOT" "$R_RTOK" "$R_ELAPSED" "[$R_MARK] $R_VERDICT"
+    result_row "$R_WANTED" "$R_GOT" "$R_RTOK" "$R_ELAPSED" "[$R_MARK] $R_VERDICT" "$PROBE_EFFORT"
     echo "--------------------------------------------------"
     echo
     echo "================================================================================"
@@ -1077,29 +1121,82 @@ case "$ACT" in
         echo -n "$T_EXIT"; read dummy; exit 1
     fi
 
+    # Which reasoning efforts to probe. The list is per model - gpt-5.5
+    # stops at xhigh while the newer ones go to max, and only some offer
+    # ultra - so it comes from the catalog rather than being assumed.
+    EFFORTS=$(model_efforts "$TESTMODEL")
+    [ -n "$EFFORTS" ] || EFFORTS="$CFGEFFORT"
+    NLEV=0; for e in $EFFORTS; do NLEV=$((NLEV+1)); done
+
     echo
-    echo "  $T_ASKING"
-    echo "  $T_WAIT"
+    echo "  $T_EFFORT_Q"
+    echo "    1) $T_EFFORT_ONE (${CFGEFFORT:-?})"
+    echo "    2) $T_EFFORT_ALL —— $EFFORTS   ($NLEV $T_EFFORT_TIMES)"
     echo
-    PROBE_PREFIX=""
-    if run_one_model "$TESTMODEL"; then
-        show_one_result
-        record_one
-        echo "  $T_RECORD : $RECORD"
+    echo -n "  $T_Q_ASK"; read ES
+    case "$ES" in
+        2) PROBE_EFFORTS="$EFFORTS" ;;
+        *) if [ -n "$CFGEFFORT" ]; then PROBE_EFFORTS="$CFGEFFORT"
+           else PROBE_EFFORTS="config"; fi ;;
+    esac
+    NL=0; for e in $PROBE_EFFORTS; do NL=$((NL+1)); done
+
+    echo
+    if [ "$NL" -gt 1 ]; then
+        echo "  $T_PICKMODEL : $TESTMODEL   ($T_EFFORT: $PROBE_EFFORTS)"
+        echo
+        result_header
     else
-        echo "  [ERROR] $T_ERR_REQUEST $?$T_ERR_CLOSE"
+        echo "  $T_ASKING"
+        echo "  $T_WAIT"
         echo
-        echo "  $T_ERR_COMMON"
-        echo "    - $T_ERR_R1"
-        echo "    - $T_ERR_R2"
-        echo "    - $T_ERR_R3"
-        echo
-        echo "  $T_ERR_SERVER"
-        grep -oiE '"message"[[:space:]]*:[[:space:]]*"[^"]{0,140}' "$LOG" 2>/dev/null | sort -u | head -2 | sed 's/^/      /'
-        echo
-        echo "  $T_ERR_LOG : $LOG"
-        record_one
     fi
+
+    ANYFAIL=0
+    for e in $PROBE_EFFORTS; do
+        # "config" means: pass no override, let Codex use the config value.
+        case "$e" in
+            config) PROBE_EFFORT="" ;;
+            *)      PROBE_EFFORT="$e" ;;
+        esac
+        PROBE_PREFIX=""
+
+        if run_one_model "$TESTMODEL"; then
+            if [ "$NL" -gt 1 ]; then
+                result_row "$R_WANTED" "$R_GOT" "$R_RTOK" "$R_ELAPSED" \
+                           "[$R_MARK] $R_VERDICT" "$e"
+            else
+                show_one_result
+                echo "  $T_RECORD : $RECORD"
+            fi
+        else
+            ANYFAIL=1
+            if [ "$NL" -gt 1 ]; then
+                result_row "$TESTMODEL" "${R_VERDICT:-?}" "" "$R_ELAPSED" "--" "$e"
+            else
+                echo "  [ERROR] $T_ERR_REQUEST $?$T_ERR_CLOSE"
+                echo
+                echo "  $T_ERR_COMMON"
+                echo "    - $T_ERR_R1"
+                echo "    - $T_ERR_R2"
+                echo "    - $T_ERR_R3"
+                echo
+                echo "  $T_ERR_SERVER"
+                grep -oiE '"message"[[:space:]]*:[[:space:]]*"[^"]{0,140}' "$LOG" 2>/dev/null | sort -u | head -2 | sed 's/^/      /'
+            fi
+        fi
+        record_one
+    done
+
+    if [ "$NL" -gt 1 ]; then
+        echo
+        echo "  $T_RECORD : $RECORD"
+        echo "  $T_NOQUOTA"
+        [ "$ANYFAIL" = "1" ] && echo "  $T_ERR_LOG : $LOG"
+        echo
+    fi
+
+    PROBE_EFFORT=""
     ;;
 
 # ------------------------------------------------------------
@@ -1192,7 +1289,7 @@ case "$ACT" in
             sx="${SUM_HIT[$j]}/${SUM_TOT[$j]} OK"
         fi
         result_row "${SUM_W[$j]}" "${SUM_G[$j]}" "${SUM_R[$j]}" "${SUM_E[$j]}" \
-                   "[${SUM_M[$j]}] ${SUM_V[$j]}" "$sx"
+                   "[${SUM_M[$j]}] ${SUM_V[$j]}" "$CFGEFFORT" "$sx"
     done
     echo "================================================================================"
     echo

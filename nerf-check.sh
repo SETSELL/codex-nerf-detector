@@ -1130,10 +1130,34 @@ run_one_model() {
     # Counted, not just de-duplicated: how many times each model turned up
     # in the response is evidence in its own right, and the README has been
     # promising an "xN" column that no version of this script ever printed.
+    # Read with awk rather than a bounded grep window. The response object
+    # carries the whole Codex system prompt in its `instructions` field, so
+    # "model" can sit ~21,000 characters after "object":"response" - and
+    # there are } braces in between, which a [^}]{0,600} window cannot
+    # cross either. On runs shaped that way the old pattern matched
+    # nothing, and a request that had completed with HTTP 200 and
+    # status:"completed" was reported as 未确定.
+    #
+    # Stopping at the next response object keeps the request body's model
+    # out, which is the one mistake this tool can really make: a request
+    # model sits in an event of its own, with no response object in front
+    # of it.
     local models raw
-    raw=$(grep -oE '"object":"response"[^}]{0,600}' "$LOG" 2>/dev/null \
-          | grep -oE '"model":"gpt-[0-9a-zA-Z.-]+"' \
-          | sed 's/.*"model":"//; s/"$//' | sort | uniq -c | sort -rn)
+    raw=$(awk '
+        BEGIN { A = "\"object\":\"response\"" }
+        {
+            s = $0
+            while ((a = index(s, A)) > 0) {
+                s = substr(s, a + length(A))
+                b = index(s, A)
+                seg = (b > 0) ? substr(s, 1, b - 1) : s
+                if (match(seg, /"model":"gpt-[0-9a-zA-Z.-]+"/))
+                    print substr(seg, RSTART + 9, RLENGTH - 10)
+                if (b <= 0) break
+                s = substr(s, b)
+            }
+        }
+    ' "$LOG" 2>/dev/null | sort | uniq -c | sort -rn)
     models=$(echo "$raw" | awk '{print $2}' | grep .)
 
     # The count is evidence, so it travels with the name everywhere the

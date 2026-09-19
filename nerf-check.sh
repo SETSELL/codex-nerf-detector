@@ -251,9 +251,11 @@ T_CONC_DOWN="结论：你请求的模型完全没有参与这次回答。"
 T_CONC_UNKNOWN="结论：没能抓到响应内容，无法判断。"
 T_FULL_WARN="⚠️  全模型检测会逐个发请求。"
 T_REPEAT_Q="每个模型测几次？"
-T_REPEAT_1="1 次   快，但只能证明「发生过」，不能证明「每次都是」"
-T_REPEAT_3="3 次   推荐 —— 能看出是偶发还是稳定复现"
-T_REPEAT_5="5 次   最有力，但很慢"
+T_REPEAT_1="1 次    快，但只能证明「发生过」，不能证明「每次都是」"
+T_REPEAT_3="3 次    推荐 —— 能看出是偶发还是稳定复现"
+T_REPEAT_5="5 次    有力 —— 比例开始有意义"
+T_REPEAT_10="10 次   最彻底 —— 能给出稳定的降级比例，但很慢"
+T_REQ_SHORT="次请求"
 T_REPEAT_EACH="每个模型测"
 T_TOTAL_REQ="本次共发出请求"
 T_EST_TIME="预计耗时约"
@@ -385,7 +387,9 @@ T_FULL_WARN="WARNING: the full sweep sends real requests."
 T_REPEAT_Q="How many times per model?"
 T_REPEAT_1="1 time     fast, but only proves it happened, not that it always happens"
 T_REPEAT_3="3 times    recommended - shows whether it is occasional or consistent"
-T_REPEAT_5="5 times    strongest, but slow"
+T_REPEAT_5="5 times    strong - a ratio starts to mean something"
+T_REPEAT_10="10 times   most thorough - a stable downgrade rate, but slow"
+T_REQ_SHORT="req"
 T_REPEAT_EACH="requests per model"
 T_TOTAL_REQ="requests this run"
 T_EST_TIME="estimated time"
@@ -1276,15 +1280,24 @@ case "$ACT" in
     echo "  $T_FULL_WARN"
     echo "  ($T_CFGCOUNT: $NMODELS)"
     echo
+    # Each option carries what it will actually cost: the sweep sends
+    # models x repeats requests, and at roughly two minutes each that is
+    # not obvious from "10 times" alone.
     echo "  $T_REPEAT_Q"
-    echo "    1) $T_REPEAT_1"
-    echo "    2) $T_REPEAT_3"
-    echo "    3) $T_REPEAT_5"
+    printf "    1) %s   [%d %s / ~%d %s]\n" "$T_REPEAT_1" \
+        "$((NMODELS))"      "$T_REQ_SHORT" "$((NMODELS * 2))"    "$T_MINUTES"
+    printf "    2) %s   [%d %s / ~%d %s]\n" "$T_REPEAT_3" \
+        "$((NMODELS * 3))"  "$T_REQ_SHORT" "$((NMODELS * 6))"    "$T_MINUTES"
+    printf "    3) %s   [%d %s / ~%d %s]\n" "$T_REPEAT_5" \
+        "$((NMODELS * 5))"  "$T_REQ_SHORT" "$((NMODELS * 10))"   "$T_MINUTES"
+    printf "    4) %s   [%d %s / ~%d %s]\n" "$T_REPEAT_10" \
+        "$((NMODELS * 10))" "$T_REQ_SHORT" "$((NMODELS * 20))"   "$T_MINUTES"
     echo
     echo -n "  $T_Q_ASK"; read RP
     case "$RP" in
         2) REPEATS=3 ;;
         3) REPEATS=5 ;;
+        4) REPEATS=10 ;;
         *) REPEATS=1 ;;
     esac
     echo

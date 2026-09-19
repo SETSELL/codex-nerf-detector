@@ -365,13 +365,17 @@ chmod +x nerf-check-macos.command nerf-check.sh
 
 ### 关于耗时
 
-| 模式 | 耗时 |
-|---|---|
-| 只看清单 | 瞬间，**不消耗额度** |
-| 单模型 × 1 档 | 1~3 分钟 |
-| 单模型 × 全部档（6 档） | 约 8~15 分钟 |
-| **全模型 × 1 次** | 约 8~15 分钟 |
-| **全模型 × 3 次**（推荐） | 约 25~45 分钟 |
+| 模式 | 请求数 | 耗时 |
+|---|---|---|
+| 只看清单 | 0 | 瞬间，**不消耗额度** |
+| 单模型 × 1 档 | 1 | 约 2 分钟 |
+| 单模型 × 全部档 | 4~6（按模型而定） | 约 8~15 分钟 |
+| 全模型 × 1 次 | 5 | 约 10 分钟 |
+| **全模型 × 3 次**（推荐） | 15 | 约 30 分钟 |
+| 全模型 × 5 次 | 25 | 约 50 分钟 |
+| 全模型 × 10 次 | 50 | 约 100 分钟 |
+
+请求数按目录里现有的 **5 个模型**算。目录里多一个模型，请求数和时间就按比例往上加——**菜单里每一档都会实时标出它自己要发多少次请求、大概多久**，不用自己算。
 
 **每个模型有 300 秒超时上限**，超了会标成 `[--] 超时` 继续下一个，不会卡死在那里。
 
@@ -1038,15 +1042,21 @@ read without sending anything.
 
 ### How long it takes
 
-| Mode | Time |
-|---|---|
-| One model | 20–60 seconds |
-| List only | instant, **no quota used** |
-| **Full sweep × 1** | about 5 minutes |
-| **Full sweep × 3** (recommended) | about 15 minutes |
-| **Full sweep × 5** | about 25 minutes |
+| Mode | Requests | Time |
+|---|---|---|
+| List only | 0 | instant, **no quota used** |
+| One model × 1 effort | 1 | about 2 minutes |
+| One model × every effort | 4–6 (depends on the model) | about 8–15 minutes |
+| Full sweep × 1 | 5 | about 10 minutes |
+| **Full sweep × 3** (recommended) | 15 | about 30 minutes |
+| Full sweep × 5 | 25 | about 50 minutes |
+| Full sweep × 10 | 50 | about 100 minutes |
 
-**Each model has a 180-second cap.** If one stalls it is marked `[--] timed out`
+Request counts assume the 5 models currently in the catalog. Add a model and
+both scale with it — **the menu prints the request count and the time next to
+each option**, so there is nothing to work out by hand.
+
+**Each model has a 300-second cap.** If one stalls it is marked `[--] timed out`
 and the sweep moves on, rather than appearing to hang.
 
 ### Why the repeat count matters

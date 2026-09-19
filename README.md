@@ -270,14 +270,16 @@ grep -oE '"object":"response"[^}]{0,600}' 日志 \
 
 ## 判定标准
 
-| 标记 | 名称 | 含义 |
+| 判定 | 颜色 | 含义 |
 |---|---|---|
-| `[OK]` | 正常 | 响应里只有你请求的那个模型 |
-| `[!!]` | 部分降级 | 你请求的模型有出现，**但也混了别的** —— 不稳定 |
-| `[XX]` | 被降智 | 你请求的模型**完全没出现** |
-| `[??]` | 无法确定 | 没抓到响应内容（日志格式可能变了） |
+| **满血** | 绿 | 响应里只有你请求的那个模型 |
+| **掺水** | 黄 | 你请求的模型有出现，**但也混了别的** —— 不稳定 |
+| **降智** | 红 | 你请求的模型**完全没出现** |
+| **未确定** | 无 | 没抓到响应内容（日志格式可能变了）|
 
-**为什么 `[!!]` 要单独一档？**
+判定在终端里用颜色标出——**红色就是被降智**。管道输出、重定向到文件、以及 `check-records.txt` 里都是纯文字，不带颜色码；想要彻底关掉颜色可以设 `NO_COLOR=1`。
+
+**为什么「掺水」要单独一档？**
 
 因为实测中确实出现过这种情况：
 
@@ -954,14 +956,18 @@ Print both, emit a verdict, append to `check-records.txt`.
 
 ## Verdicts
 
-| Mark | Meaning |
-|---|---|
-| `[OK]` | Only the model you asked for appeared in the response |
-| `[!!]` | Your model appeared, **but others were mixed in** — unstable |
-| `[XX]` | Your model never appeared at all |
-| `[??]` | Nothing captured — the log format may have changed |
+| Verdict | Colour | Meaning |
+|---|---|---|
+| **FULL** | green | Only the model you asked for appeared in the response |
+| **DILUTED** | yellow | Your model appeared, **but others were mixed in** — unstable |
+| **DOWNGRADED** | red | Your model never appeared at all |
+| **UNDETERMINED** | none | Nothing captured — the log format may have changed |
 
-**Why `[!!]` is its own verdict:**
+The verdict is coloured on a terminal — **red means downgraded**. Piped
+output, redirected output and `check-records.txt` are plain text with no
+escape codes. Set `NO_COLOR=1` to turn colour off entirely.
+
+**Why DILUTED is its own verdict:**
 
 Because this was observed in practice:
 

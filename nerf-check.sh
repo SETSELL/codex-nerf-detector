@@ -229,7 +229,7 @@ T_EFFORT_Q="思考强度范围："
 T_EFFORT_ONE="只测配置档"
 T_EFFORT_ALL="全部档位"
 T_EFFORT_TIMES="次请求"
-T_G_FULL="满血"
+T_G_FULL="自述一致"
 T_G_DILUTED="掺水"
 T_G_DOWN="降智"
 T_G_UNDET="未确定"
@@ -242,10 +242,14 @@ T_B5="额度重置倒计时"
 T_CAUSE_CREDITS="套餐额度已耗尽 —— 这是旗舰模型被降级的直接原因"
 T_CAUSE_NOCREDITS="套餐额度还有余量，但付费额度余额为 0 —— 旗舰模型可能只认付费额度，这一档被挡在外面"
 T_CAUSE_UNKNOWN="额度正常，但请求仍被降级 —— 原因不明，这种情况反而更可疑"
-T_CONC_FULL="结论：你请求的模型正常服务，没有掺假。"
+T_CONC_FULL="结论：接口自述的模型与你请求的一致 —— 仅此而已，见下方「不能证明什么」。"
 T_CONC_DILUTED="结论：你请求的模型有参与，但同一个请求里混进了别的模型 —— 不稳定。"
 T_CONC_DOWN="结论：你请求的模型完全没有参与这次回答。"
 T_CONC_UNKNOWN="结论：没能抓到响应内容，无法判断。"
+T_LIMITS="这个结果不能证明什么"
+T_LIM1="它只说明接口自述的是哪个模型，不说明实际回答的权重是什么"
+T_LIM2="服务端自述的模型名不能当作「没被换」的证据 —— 换模型的本质就是说没换"
+T_LIM3="单次结果不算结论。要下判断，请重复多次、并换账号对比"
 T_FULL_WARN="⚠️  全模型检测会逐个发请求。"
 T_REPEAT_Q="每个模型测几次？"
 T_REPEAT_1="1 次    快，但只能证明「发生过」，不能证明「每次都是」"
@@ -259,7 +263,7 @@ T_EST_TIME="预计耗时约"
 T_MINUTES="分钟"
 T_FULL_ASK="继续吗？(y/N) "
 T_FULL_GO="开始全模型检测"
-T_NOQUOTA="⚠️  检查记录里包含你的账号邮箱，不要提交到仓库。"
+T_NOQUOTA="检查记录里存的是账号哈希，不是邮箱 —— 可以安全分享或提交。"
 T_SUMMARY="检测汇总"
 T_MODEL="模型"
 T_GOT="实际"
@@ -353,7 +357,7 @@ T_EFFORT_Q="Reasoning effort:"
 T_EFFORT_ONE="config level only"
 T_EFFORT_ALL="every level"
 T_EFFORT_TIMES="requests"
-T_G_FULL="FULL"
+T_G_FULL="SELF-REPORT"
 T_G_DILUTED="DILUTED"
 T_G_DOWN="DOWNGRADED"
 T_G_UNDET="UNDETERMINED"
@@ -366,10 +370,14 @@ T_B5="credits reset in"
 T_CAUSE_CREDITS="the plan window is exhausted - this is the direct cause of the flagship being rerouted"
 T_CAUSE_NOCREDITS="the plan window still has room, but the credit balance is 0 - the flagship may draw only on credits, and that is what it is being kept out of"
 T_CAUSE_UNKNOWN="credits look fine, yet the request was still rerouted - cause unknown, and that is the more suspicious case"
-T_CONC_FULL="Conclusion: the model you asked for served you, with nothing else mixed in."
+T_CONC_FULL="Conclusion: the model the interface names matches the one you asked for - and that is all it shows. See below."
 T_CONC_DILUTED="Conclusion: your model took part, but other models were mixed into the same request - unstable."
 T_CONC_DOWN="Conclusion: the model you asked for took no part in this answer."
 T_CONC_UNKNOWN="Conclusion: nothing could be captured, so no judgement is possible."
+T_LIMITS="What this does not prove"
+T_LIM1="It shows what the interface says about itself, not which weights answered"
+T_LIM2="A server naming the model you asked for is not evidence it served it - a silent swap is precisely a claim that nothing was swapped"
+T_LIM3="One run is not a conclusion. Repeat it, and compare across accounts"
 T_FULL_WARN="WARNING: the full sweep sends real requests."
 T_REPEAT_Q="How many times per model?"
 T_REPEAT_1="1 time     fast, but only proves it happened, not that it always happens"
@@ -383,7 +391,7 @@ T_EST_TIME="estimated time"
 T_MINUTES="min"
 T_FULL_ASK="Continue? (y/N) "
 T_FULL_GO="Starting full sweep"
-T_NOQUOTA="NOTE: check-records.txt contains your account email. Do not commit it."
+T_NOQUOTA="check-records.txt labels each account by hash, not by address - safe to share or commit."
 T_SUMMARY="SUMMARY"
 T_MODEL="model"
 T_GOT="served"
@@ -1125,14 +1133,40 @@ show_one_result() {
         ??)   echo "  $T_CONC_UNKNOWN" ;;
     esac
     echo
+    # Printed every time, not only on a weak result. A tool whose whole
+    # argument is "they are not telling you the truth" has to be scrupulous
+    # about what its own evidence establishes, and the honest boundary is
+    # the same whichever verdict came out.
+    echo "  --- $T_LIMITS ---"
+    echo
+    echo "    - $T_LIM1"
+    echo "    - $T_LIM2"
+    echo "    - $T_LIM3"
+    echo
     echo "================================================================================"
     echo
 }
 
+# A short stable label for an account, so the record file can be shared,
+# committed and pasted into an issue without carrying the address itself.
+# The whole point of the file is cross-account comparison, and that works
+# exactly as well on a hash as on an address - while an address in a
+# public repo works against the person who ran the tool.
+acct_label() {
+    local h
+    h=$(printf '%s' "$1" | sha256sum 2>/dev/null | cut -c1-12)
+    [ -n "$h" ] || h=$(printf '%s' "$1" | shasum -a 256 2>/dev/null | cut -c1-12)
+    [ -n "$h" ] || h=$(printf '%s' "$1" | cksum 2>/dev/null | tr -d ' ' | cut -c1-12)
+    [ -n "$h" ] || h="unlabelled"
+    echo "$h"
+}
+
 record_one() {
-    local ts; ts=$(date "+%Y-%m-%d %H:%M")
-    printf "%s | %-32s | asked=%-20s | got=%-24s | %s\n" \
-        "$ts" "${R_EMAIL:-unknown}" "${R_WANTED:-?}" "${R_GOT:-?}" "${R_VERDICT:-?}" >> "$RECORD" 2>/dev/null
+    local ts who
+    ts=$(date "+%Y-%m-%d %H:%M")
+    if [ -n "$R_EMAIL" ]; then who=$(acct_label "$R_EMAIL"); else who="unknown"; fi
+    printf "%s | %-16s | asked=%-20s | got=%-24s | %s\n" \
+        "$ts" "$who" "${R_WANTED:-?}" "${R_GOT:-?}" "${R_VERDICT:-?}" >> "$RECORD" 2>/dev/null
 }
 
 # ============================================================

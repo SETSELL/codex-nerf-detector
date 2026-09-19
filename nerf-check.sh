@@ -942,7 +942,9 @@ result_row() {
 
     # Only meaningful when both ends are in the catalog and the answer is a
     # single model - a diluted response lists several, joined with "+".
-    wr=$(tier_rank "$m"); gr=$(tier_rank "$got")
+    # Strip the " xN" suffix before looking the name up in the catalogue,
+    # or no tier would ever be found and the drop annotation would vanish.
+    wr=$(tier_rank "$m"); gr=$(tier_rank "${got%% x*}")
     if [ -n "$wr" ] && [ -n "$gr" ] && [ "$wr" != "$gr" ]; then
         wl=${wr#L}; gl=${gr#L}
         if [ "$gl" -lt "$wl" ]; then note="$note   $T_DROP $((wl-gl)) $T_TIERS"
@@ -1134,7 +1136,10 @@ run_one_model() {
           | sed 's/.*"model":"//; s/"$//' | sort | uniq -c | sort -rn)
     models=$(echo "$raw" | awk '{print $2}' | grep .)
 
-    R_GOT=$(echo "$models" | tr '\n' '+' | sed 's/+$//')
+    # The count is evidence, so it travels with the name everywhere the
+    # model is shown - not only in the block that spells it out. "luna x3"
+    # says something "luna" does not: it appeared three times.
+    R_GOT=$(echo "$raw" | awk '{printf "%s x%s+", $2, $1}' | sed 's/+$//')
     R_GOT_CNT=$(echo "$raw" | awk '{printf "%s %s\n", $2, $1}')
     local cnt; cnt=$(echo "$models" | grep -c .)
 
@@ -1219,7 +1224,7 @@ show_one_result() {
     echo "    * $T_B1 : $R_WANTED"
     echo "    * $T_B2 : ${R_GOT:-?}"
     if [ -n "$R_HINT" ]; then
-        if echo "$R_GOT" | tr '+' '\n' | grep -qx "$R_HINT"; then
+        if echo "$R_GOT" | tr '+' '\n' | sed 's/ x[0-9]*$//' | grep -qx "$R_HINT"; then
             echo "    * $T_B3 : $R_HINT   $T_HINT_MATCH"
         else
             echo "    * $T_B3 : $R_HINT"

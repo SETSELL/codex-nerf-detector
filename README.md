@@ -309,9 +309,26 @@ chmod +x run-check.command nerf-check.sh
 |---|---|
 | 单模型 | 20~60 秒 |
 | 只看清单 | 瞬间，**不消耗额度** |
-| **全模型**（6 个） | **约 3~15 分钟**（一个模型一个模型地测） |
+| **全模型 × 1 次** | 约 5 分钟 |
+| **全模型 × 3 次**（推荐） | 约 15 分钟 |
+| **全模型 × 5 次** | 约 25 分钟 |
 
 **每个模型有 180 秒超时上限**，超了会标成 `[--] timed out` 继续下一个，不会卡死在那里。
+
+### 为什么要重复测
+
+**一次结果只能证明「发生过」，不能证明「每次都发生」。**
+
+```
+单次 astra→luna   →  说明它至少发生过一次 ✓
+                     但可能是偶发、是网络抖动、是临时调度 ✗
+
+3 次全中          →  稳定复现，这没法用偶发解释 ✓✓✓
+```
+
+工具会问你**每个模型测几次**（1 / 3 / 5），汇总表里会显示 `3/3 OK` 这样的比例。
+
+**对 `gpt-6-astra` 这类你想拿来当证据的模型，建议至少 3 次。**
 
 ### 方式二：带参数
 
@@ -933,10 +950,31 @@ read without sending anything.
 |---|---|
 | One model | 20–60 seconds |
 | List only | instant, **no quota used** |
-| **Full sweep** (6 models) | **roughly 3–15 minutes** (sequential) |
+| **Full sweep × 1** | about 5 minutes |
+| **Full sweep × 3** (recommended) | about 15 minutes |
+| **Full sweep × 5** | about 25 minutes |
 
 **Each model has a 180-second cap.** If one stalls it is marked `[--] timed out`
 and the sweep moves on, rather than appearing to hang.
+
+### Why the repeat count matters
+
+**One result proves it happened. It does not prove it always happens.**
+
+```
+one run showing astra -> luna   proves it happened at least once  ✓
+                                but could be a fluke, a transient
+                                routing blip, or a bad minute     ✗
+
+3 out of 3 the same             consistent, and consistency is not
+                                something a fluke explains        ✓✓✓
+```
+
+The sweep asks how many times to test each model (1 / 3 / 5), and the summary
+reports the ratio as `3/3 OK`.
+
+**For a model you intend to cite as evidence — `gpt-6-astra` in the example
+above — use at least 3.**
 
 ### Overriding the timeout
 

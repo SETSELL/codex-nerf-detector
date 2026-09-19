@@ -144,7 +144,14 @@ T_YOUASKED="你请求的是"
 T_SEEN="响应里出现的模型"
 T_WANTED="← 你要的"
 T_DOWNGRADE="← 降级款"
-T_FULL_WARN="⚠️  全模型检测会逐个发请求，每个模型一次。"
+T_FULL_WARN="⚠️  全模型检测会逐个发请求。"
+T_REPEAT_Q="每个模型测几次？"
+T_REPEAT_1="1 次   快，但只能证明「发生过」，不能证明「每次都是」"
+T_REPEAT_3="3 次   推荐 —— 能看出是偶发还是稳定复现"
+T_REPEAT_5="5 次   最有力，但很慢"
+T_REPEAT_EACH="每个模型测"
+T_EST_TIME="预计耗时约"
+T_MINUTES="分钟"
 T_FULL_ASK="继续吗？(y/N) "
 T_FULL_GO="开始全模型检测"
 T_TESTING="正在测试"
@@ -210,7 +217,14 @@ T_YOUASKED="you asked for"
 T_SEEN="models seen in the response"
 T_WANTED="<- the one you asked for"
 T_DOWNGRADE="<- downgrade target"
-T_FULL_WARN="WARNING: the full sweep sends one request per model."
+T_FULL_WARN="WARNING: the full sweep sends real requests."
+T_REPEAT_Q="How many times per model?"
+T_REPEAT_1="1 time     fast, but only proves it happened, not that it always happens"
+T_REPEAT_3="3 times    recommended - shows whether it is occasional or consistent"
+T_REPEAT_5="5 times    strongest, but slow"
+T_REPEAT_EACH="requests per model"
+T_EST_TIME="estimated time"
+T_MINUTES="min"
 T_FULL_ASK="Continue? (y/N) "
 T_FULL_GO="Starting full sweep"
 T_TESTING="testing"
@@ -625,6 +639,21 @@ case "$ACT" in
     echo "  $T_FULL_WARN"
     echo "  ($T_CFGCOUNT: $NMODELS)"
     echo
+    echo "  $T_REPEAT_Q"
+    echo "    1) $T_REPEAT_1"
+    echo "    2) $T_REPEAT_3"
+    echo "    3) $T_REPEAT_5"
+    echo
+    echo -n "  $T_Q_ASK"; read RP
+    case "$RP" in
+        2) REPEATS=3 ;;
+        3) REPEATS=5 ;;
+        *) REPEATS=1 ;;
+    esac
+    echo
+    echo "  $T_REPEAT_EACH : $REPEATS"
+    echo "  $T_EST_TIME   : ~$((NMODELS * REPEATS * 60 / 60)) $T_MINUTES"
+    echo
     echo -n "  $T_FULL_ASK"; read GO
     case "$GO" in
         y|Y|yes|YES|是) ;;
@@ -634,36 +663,55 @@ case "$ACT" in
     echo "  === $T_FULL_GO ==="
     echo
 
-    SUM_W=(); SUM_G=(); SUM_M=(); SUM_V=()
+    SUM_W=(); SUM_G=(); SUM_M=(); SUM_V=(); SUM_HIT=(); SUM_TOT=()
     i=0
     while read -r m; do
         [ -n "$m" ] || continue
         i=$((i+1))
         printf "  [%d/%d] %-20s " "$i" "$NMODELS" "$m"
-        if run_one_model "$m"; then
-            printf "[%s] %s\n" "$R_MARK" "$R_VERDICT"
+
+        hit=0; tot=0; lastgot=""; lastmark=""; lastverdict=""
+        for r in $(seq 1 "$REPEATS"); do
+            tot=$((tot+1))
+            if run_one_model "$m"; then
+                if [ "$R_MARK" = "OK" ]; then hit=$((hit+1)); fi
+                lastgot="$R_GOT"; lastmark="$R_MARK"; lastverdict="$R_VERDICT"
+            else
+                lastgot="($R_VERDICT)"; lastmark="--"; lastverdict="$R_VERDICT"
+            fi
             record_one
+            [ "$r" -lt "$REPEATS" ] && printf "."
+        done
+
+        if [ "$REPEATS" -gt 1 ]; then
+            printf "[%s] %s  (%d/%d OK)\n" "$lastmark" "$lastverdict" "$hit" "$tot"
         else
-            printf "[--] %s\n" "$T_NOACC"
-            record_one
+            printf "[%s] %s\n" "$lastmark" "$lastverdict"
         fi
-        SUM_W[$i]="$R_WANTED"
-        SUM_G[$i]="$R_GOT"
-        SUM_M[$i]="$R_MARK"
-        SUM_V[$i]="$R_VERDICT"
+
+        SUM_W[$i]="$m"
+        SUM_G[$i]="$lastgot"
+        SUM_M[$i]="$lastmark"
+        SUM_V[$i]="$lastverdict"
+        SUM_HIT[$i]="$hit"
+        SUM_TOT[$i]="$tot"
     done <<< "$MODEL_LIST"
 
     echo
-    echo "=================================================="
+    echo "================================================================================"
     echo "            $T_SUMMARY"
-    echo "=================================================="
-    printf "  %-22s %-22s %-24s %s\n" "$T_MODEL" "$T_ASKED" "$T_GOT" "$T_VERDICT"
+    echo "================================================================================"
+    printf "  %-20s %-22s %-24s %s\n" "$T_MODEL" "$T_ASKED" "$T_GOT" "$T_VERDICT"
     echo "  ------------------------------------------------------------------------------"
     for j in $(seq 1 ${#SUM_W[@]}); do
-        printf "  %-22s %-22s %-24s [%s] %s\n" \
+        printf "  %-20s %-22s %-24s [%s] %s" \
             "${SUM_W[$j]}" "${SUM_W[$j]}" "${SUM_G[$j]:--}" "${SUM_M[$j]}" "${SUM_V[$j]}"
+        if [ "${SUM_TOT[$j]}" -gt 1 ]; then
+            printf "  %d/%d OK" "${SUM_HIT[$j]}" "${SUM_TOT[$j]}"
+        fi
+        echo
     done
-    echo "=================================================="
+    echo "================================================================================"
     echo
     echo "  $T_RECORD : $RECORD"
     echo "  $T_NOQUOTA"

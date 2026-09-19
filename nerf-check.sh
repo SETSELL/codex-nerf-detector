@@ -320,6 +320,8 @@ T_MODEL="模型"
 T_GOT="实际"
 T_VERDICT="判定"
 T_NOACC="无权限"
+T_FAILED="失败"
+T_ERRWHY="失败原因（取自日志）"
 T_TIMEOUT="超时"
 T_RECORD="已追加到"
 T_EXIT="按回车键退出..."
@@ -459,6 +461,8 @@ T_MODEL="model"
 T_GOT="served"
 T_VERDICT="verdict"
 T_NOACC="no access"
+T_FAILED="failed"
+T_ERRWHY="why it failed (from the log)"
 T_TIMEOUT="timed out"
 T_RECORD="appended to"
 T_EXIT="Press Enter to exit..."
@@ -1006,7 +1010,7 @@ run_one_model() {
     R_RESET=""; R_RESET_TXT=""; R_CAUSE=""
     R_ALLOWED=""; R_LIMREACHED=""; R_USEDPCT=""; R_WINDOW=""
     R_GOT_CNT=""
-    R_HINT=""; R_TTFT=""; R_QUEUE=""; R_RTOK=""
+    R_HINT=""; R_TTFT=""; R_QUEUE=""; R_RTOK=""; R_ERRTXT=""
     R_EMAIL=$(grep -oE 'user\.email="[^"]*"' "$LOG" 2>/dev/null | head -1 | sed 's/user\.email="//; s/"$//')
 
     if [ "$rc" -eq 124 ]; then
@@ -1017,7 +1021,25 @@ run_one_model() {
 
     if [ "$rc" -ne 0 ]; then
         R_MARK="--"
-        R_VERDICT="$T_NOACC"
+        # A non-zero exit is not the same thing as "this account has no
+        # access". Calling every failure that sends people looking at
+        # their subscription when the real cause is, as it was here,
+        # codex timing out while refreshing its own model catalogue.
+        # Pull out what the log actually says.
+        # The trace prefix is full of "::" and colons, so take everything
+        # after the last ": " on the line rather than trying to match the
+        # structured part.
+        R_ERRTXT=$(grep -E ' ERROR ' "$LOG" 2>/dev/null | tail -1 \
+                   | sed 's/.*: //' | cut -c1-150)
+        if [ -z "$R_ERRTXT" ]; then
+            R_ERRTXT=$(grep -oiE '"(message|detail|error)":[[:space:]]*"[^"]{0,150}' "$LOG" 2>/dev/null \
+                       | tail -1 | sed 's/^[^:]*:[[:space:]]*"//')
+        fi
+        if echo "$R_ERRTXT" | grep -qiE 'unauthor|forbidden|no access|401|403|not entitled|permission'; then
+            R_VERDICT="$T_NOACC"
+        else
+            R_VERDICT="$T_FAILED"
+        fi
         return 1
     fi
 
@@ -1404,7 +1426,7 @@ case "$ACT" in
             ANYFAIL=1
             if [ "$NROWS" -gt 1 ]; then
                 result_row "$TESTMODEL" "${R_VERDICT:-?}" "" "$R_ELAPSED" \
-                           "--" "${R_VERDICT:-?}" "$e"
+                           "--" "${R_VERDICT:-?}" "$e" "${R_ERRTXT:0:80}"
             else
                 echo "  [ERROR] $T_ERR_REQUEST $?$T_ERR_CLOSE"
                 echo
@@ -1415,6 +1437,13 @@ case "$ACT" in
                 echo
                 echo "  $T_ERR_SERVER"
                 grep -oiE '"message"[[:space:]]*:[[:space:]]*"[^"]{0,140}' "$LOG" 2>/dev/null | sort -u | head -2 | sed 's/^/      /'
+                if [ -n "$R_ERRTXT" ]; then
+                    echo
+                    echo "  $T_ERRWHY"
+                    echo "      $R_ERRTXT"
+                fi
+                echo
+                echo "  $T_DIAG_LOG: $LOG"
             fi
         fi
         record_one

@@ -59,6 +59,24 @@ prune_logs() {
 # timeout. A reasoning prompt takes noticeably longer than a trivial one.
 PER_MODEL_TIMEOUT="${PER_MODEL_TIMEOUT:-300}"
 
+# Elapsed seconds from runs in this session.
+#
+# How long a reasoning request takes depends on the model, the effort and
+# how busy the server is - "low" and "ultra" are not close. A constant
+# picked once reads like a fact and is a guess, so the estimate is built
+# from what this machine actually measured, and says so when it has not
+# measured anything yet.
+ELAPSED_SAMPLES=""
+est_minutes() {
+    local n=0 sum=0 s
+    for s in $ELAPSED_SAMPLES; do
+        case "$s" in ''|*[!0-9]*) continue ;; esac
+        n=$(( n + 1 )); sum=$(( sum + s ))
+    done
+    [ "$n" -gt 0 ] || { echo "$T_EST_UNKNOWN"; return 0; }
+    echo "~$(( $1 * (sum / n) / 60 )) $T_MINUTES"
+}
+
 # The prompt every model is asked.
 #
 # It has to make the model actually think. The reasoning-token count is the
@@ -291,6 +309,7 @@ T_REPEAT_10="10 次   最彻底 —— 能给出稳定的降级比例，但很�
 T_REQ_SHORT="次请求"
 T_REPEAT_EACH="每个模型测"
 T_TOTAL_REQ="本次共发出请求"
+T_EST_UNKNOWN="时间未知（还没测过）"
 T_EST_TIME="预计耗时约"
 T_MINUTES="分钟"
 T_FULL_ASK="继续吗？(y/N) "
@@ -429,6 +448,7 @@ T_REPEAT_10="10 times   most thorough - a stable downgrade rate, but slow"
 T_REQ_SHORT="req"
 T_REPEAT_EACH="requests per model"
 T_TOTAL_REQ="requests this run"
+T_EST_UNKNOWN="time unknown (nothing measured yet)"
 T_EST_TIME="estimated time"
 T_MINUTES="min"
 T_FULL_ASK="Continue? (y/N) "
@@ -969,6 +989,11 @@ run_one_model() {
     local rc
     run_probe "$M" "$PROBE_PREFIX"
     rc=$?
+    # Feed the measured duration back into the estimates.
+    case "$R_ELAPSED" in
+        ''|*[!0-9]*) ;;
+        *) ELAPSED_SAMPLES="$ELAPSED_SAMPLES $R_ELAPSED" ;;
+    esac
 
     R_WANTED="$M"
     R_GOT=""
@@ -1326,14 +1351,14 @@ case "$ACT" in
     # rather than left to be worked out.
     echo
     echo "  $T_REPEAT_Q"
-    printf "    1) %s   [%d %s / ~%d %s]\n" "$T_REPEAT_1" \
-        "$((NL))"     "$T_REQ_SHORT" "$((NL * 2))"  "$T_MINUTES"
-    printf "    2) %s   [%d %s / ~%d %s]\n" "$T_REPEAT_3" \
-        "$((NL * 3))" "$T_REQ_SHORT" "$((NL * 6))"  "$T_MINUTES"
-    printf "    3) %s   [%d %s / ~%d %s]\n" "$T_REPEAT_5" \
-        "$((NL * 5))" "$T_REQ_SHORT" "$((NL * 10))" "$T_MINUTES"
-    printf "    4) %s   [%d %s / ~%d %s]\n" "$T_REPEAT_10" \
-        "$((NL * 10))" "$T_REQ_SHORT" "$((NL * 20))" "$T_MINUTES"
+    printf "    1) %s   [%d %s / %s]\n" "$T_REPEAT_1" \
+        "$((NL))"      "$T_REQ_SHORT" "$(est_minutes "$((NL))")"
+    printf "    2) %s   [%d %s / %s]\n" "$T_REPEAT_3" \
+        "$((NL * 3))"  "$T_REQ_SHORT" "$(est_minutes "$((NL * 3))")"
+    printf "    3) %s   [%d %s / %s]\n" "$T_REPEAT_5" \
+        "$((NL * 5))"  "$T_REQ_SHORT" "$(est_minutes "$((NL * 5))")"
+    printf "    4) %s   [%d %s / %s]\n" "$T_REPEAT_10" \
+        "$((NL * 10))" "$T_REQ_SHORT" "$(est_minutes "$((NL * 10))")"
     echo
     echo -n "  $T_Q_ASK"; read -r RS
     case "$RS" in
@@ -1421,14 +1446,14 @@ case "$ACT" in
     # models x repeats requests, and at roughly two minutes each that is
     # not obvious from "10 times" alone.
     echo "  $T_REPEAT_Q"
-    printf "    1) %s   [%d %s / ~%d %s]\n" "$T_REPEAT_1" \
-        "$((NMODELS))"      "$T_REQ_SHORT" "$((NMODELS * 2))"    "$T_MINUTES"
-    printf "    2) %s   [%d %s / ~%d %s]\n" "$T_REPEAT_3" \
-        "$((NMODELS * 3))"  "$T_REQ_SHORT" "$((NMODELS * 6))"    "$T_MINUTES"
-    printf "    3) %s   [%d %s / ~%d %s]\n" "$T_REPEAT_5" \
-        "$((NMODELS * 5))"  "$T_REQ_SHORT" "$((NMODELS * 10))"   "$T_MINUTES"
-    printf "    4) %s   [%d %s / ~%d %s]\n" "$T_REPEAT_10" \
-        "$((NMODELS * 10))" "$T_REQ_SHORT" "$((NMODELS * 20))"   "$T_MINUTES"
+    printf "    1) %s   [%d %s / %s]\n" "$T_REPEAT_1" \
+        "$((NMODELS))"      "$T_REQ_SHORT" "$(est_minutes "$((NMODELS))")"
+    printf "    2) %s   [%d %s / %s]\n" "$T_REPEAT_3" \
+        "$((NMODELS * 3))"  "$T_REQ_SHORT" "$(est_minutes "$((NMODELS * 3))")"
+    printf "    3) %s   [%d %s / %s]\n" "$T_REPEAT_5" \
+        "$((NMODELS * 5))"  "$T_REQ_SHORT" "$(est_minutes "$((NMODELS * 5))")"
+    printf "    4) %s   [%d %s / %s]\n" "$T_REPEAT_10" \
+        "$((NMODELS * 10))" "$T_REQ_SHORT" "$(est_minutes "$((NMODELS * 10))")"
     echo
     echo -n "  $T_Q_ASK"; read RP
     case "$RP" in
@@ -1440,9 +1465,7 @@ case "$ACT" in
     echo
     echo "  $T_REPEAT_EACH : $REPEATS"
     echo "  $T_TOTAL_REQ  : $((NMODELS * REPEATS))"
-    # A reasoning request measured at roughly two minutes, so the old
-    # one-minute-per-request figure understated a sweep by half.
-    echo "  $T_EST_TIME   : ~$((NMODELS * REPEATS * 2)) $T_MINUTES"
+    echo "  $T_EST_TIME   : $(est_minutes "$((NMODELS * REPEATS))")"
     echo
     echo -n "  $T_FULL_ASK"; read GO
     case "$GO" in

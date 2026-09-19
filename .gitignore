@@ -1,5 +1,12 @@
-# Run output. Contains YOUR account email - never commit this.
+# Run output. Accounts are labelled by hash, not by address, so these are
+# safe to share - but they are still your own run history, not the repo's.
 check-records.txt
+
+# Trace logs, one per request. These DO contain your account email in
+# cleartext (codex logs user.email), so they must never be committed.
+# The `*.log` rule below covers them; this entry keeps the folder itself
+# out of the way as well.
+logs/
 
 # Machine-specific path to bash.exe. Users create their own.
 bash-path.txt

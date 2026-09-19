@@ -29,9 +29,31 @@ CODEX_DIR="$HOME/AppData/Local/OpenAI/Codex/bin"
 CONF="$HOME/.codex/config.toml"
 AUTH="$HOME/.codex/auth.json"
 CACHE="$HOME/.codex/models_cache.json"
-LOG="/tmp/codex_nerf_check.log"
 WORKDIR="/tmp/codexcheck"
 RECORD="$SELF_DIR/check-records.txt"
+
+# Trace logs go in a folder next to this script, one file per request.
+# A single fixed name in the system temp directory was fine while nothing
+# asked the user to produce one - it is useless for that: they cannot find
+# it, and the next run overwrites it. Falls back to the temp directory if
+# the script's own folder is not writable.
+LOGDIR="$SELF_DIR/logs"
+if ! mkdir -p "$LOGDIR" 2>/dev/null; then
+    LOGDIR="${TMPDIR:-/tmp}/codex-nerf-logs"
+    mkdir -p "$LOGDIR" 2>/dev/null
+fi
+LOG="$LOGDIR/latest.log"
+
+# A full sweep at ten repeats writes fifty multi-megabyte traces, so the
+# folder is trimmed to the newest few. Override with LOG_KEEP=0 to keep
+# everything.
+LOG_KEEP="${LOG_KEEP:-20}"
+prune_logs() {
+    [ -d "$LOGDIR" ] || return 0
+    ls -1t "$LOGDIR"/*.log 2>/dev/null \
+        | tail -n +$(( LOG_KEEP + 1 )) \
+        | while read -r f; do rm -f "$f"; done
+}
 
 # Seconds allowed per model before the run is abandoned and marked as a
 # timeout. A reasoning prompt takes noticeably longer than a trivial one.
@@ -258,6 +280,8 @@ T_DIAG_SIZE="日志大小"
 T_DIAG_BYTES="字节"
 T_DIAG_HINT="日志里没有响应体。常见原因：RUST_LOG 没生效（Codex 没写 trace 日志）、走了未预期的新传输方式、或请求中途被中断。"
 T_DIAG_SHARE="报 issue 时请附上这份日志，并写明系统和 Codex 版本 —— 只写「显示未确定」查不出原因。"
+T_DIAG_MAIL="⚠️ 日志里有你的账号邮箱。发出去之前先打开看一眼，或先把邮箱删掉。"
+T_LOGDIR="日志文件夹"
 T_FULL_WARN="⚠️  全模型检测会逐个发请求。"
 T_REPEAT_Q="每个模型测几次？"
 T_REPEAT_1="1 次    快，但只能证明「发生过」，不能证明「每次都是」"
@@ -394,6 +418,8 @@ T_DIAG_SIZE="log size"
 T_DIAG_BYTES="bytes"
 T_DIAG_HINT="The log holds no response body. Usual causes: RUST_LOG did not take effect so Codex never wrote trace output, the response came over a transport this script does not know, or the request was cut off partway."
 T_DIAG_SHARE="If you report this, attach that log and say which OS and Codex version - \"it shows UNDETERMINED\" on its own cannot be diagnosed."
+T_DIAG_MAIL="WARNING: the log contains your account email. Open it before sending, or strip that line."
+T_LOGDIR="log folder"
 T_FULL_WARN="WARNING: the full sweep sends real requests."
 T_REPEAT_Q="How many times per model?"
 T_REPEAT_1="1 time     fast, but only proves it happened, not that it always happens"
@@ -931,7 +957,10 @@ echo
 run_one_model() {
     local M="$1"
     R_ELAPSED=""
-    rm -f "$LOG"
+    # One file per request, named so the right one can be found later.
+    # No need to clear anything: the name is new every time.
+    LOG="$LOGDIR/$(date '+%Y-%m-%d_%H%M%S')_$(printf '%s' "$M" | tr -c 'a-zA-Z0-9._-' '_').log"
+    prune_logs
     mkdir -p "$WORKDIR" && cd "$WORKDIR" || return 1
 
     # Hard cap per model. A request normally finishes in 20-60s, but a
@@ -1167,12 +1196,14 @@ show_one_result() {
               echo
               echo "  --- $T_DIAG ---"
               echo
+              echo "    - $T_LOGDIR: $LOGDIR"
               echo "    - $T_DIAG_LOG: $LOG"
               if [ -f "$LOG" ]; then
                   echo "    - $T_DIAG_SIZE: $(wc -c < "$LOG" 2>/dev/null | tr -d ' ') $T_DIAG_BYTES"
               fi
               echo "    - $T_DIAG_HINT"
-              echo "    - $T_DIAG_SHARE" ;;
+              echo "    - $T_DIAG_SHARE"
+              echo "    - $T_DIAG_MAIL" ;;
     esac
     echo
     # Printed every time, not only on a weak result. A tool whose whole

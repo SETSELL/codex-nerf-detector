@@ -1320,9 +1320,35 @@ case "$ACT" in
     esac
     NL=0; for e in $PROBE_EFFORTS; do NL=$((NL+1)); done
 
+    # The same repeat choice the full sweep offers, for the same reason:
+    # one run proves it happened, not that it always happens. The totals
+    # are effort-levels x repeats, so the cost of each option is stated
+    # rather than left to be worked out.
     echo
-    if [ "$NL" -gt 1 ]; then
+    echo "  $T_REPEAT_Q"
+    printf "    1) %s   [%d %s / ~%d %s]\n" "$T_REPEAT_1" \
+        "$((NL))"     "$T_REQ_SHORT" "$((NL * 2))"  "$T_MINUTES"
+    printf "    2) %s   [%d %s / ~%d %s]\n" "$T_REPEAT_3" \
+        "$((NL * 3))" "$T_REQ_SHORT" "$((NL * 6))"  "$T_MINUTES"
+    printf "    3) %s   [%d %s / ~%d %s]\n" "$T_REPEAT_5" \
+        "$((NL * 5))" "$T_REQ_SHORT" "$((NL * 10))" "$T_MINUTES"
+    printf "    4) %s   [%d %s / ~%d %s]\n" "$T_REPEAT_10" \
+        "$((NL * 10))" "$T_REQ_SHORT" "$((NL * 20))" "$T_MINUTES"
+    echo
+    echo -n "  $T_Q_ASK"; read -r RS
+    case "$RS" in
+        2) REPS=3 ;;
+        3) REPS=5 ;;
+        4) REPS=10 ;;
+        *) REPS=1 ;;
+    esac
+    NROWS=$((NL * REPS))
+
+    echo
+    if [ "$NROWS" -gt 1 ]; then
         echo "  $T_PICKMODEL : $TESTMODEL   ($T_EFFORT: $PROBE_EFFORTS)"
+        echo "  $T_REPEAT_EACH : $REPS"
+        echo "  $T_TOTAL_REQ  : $NROWS"
         echo
         result_header
     else
@@ -1333,6 +1359,7 @@ case "$ACT" in
 
     ANYFAIL=0
     for e in $PROBE_EFFORTS; do
+      for r in $(seq 1 "$REPS"); do
         # "config" means: pass no override, let Codex use the config value.
         case "$e" in
             config) PROBE_EFFORT="" ;;
@@ -1341,7 +1368,7 @@ case "$ACT" in
         PROBE_PREFIX=""
 
         if run_one_model "$TESTMODEL"; then
-            if [ "$NL" -gt 1 ]; then
+            if [ "$NROWS" -gt 1 ]; then
                 result_row "$R_WANTED" "$R_GOT" "$R_RTOK" "$R_ELAPSED" \
                            "$R_MARK" "$R_VERDICT" "$e"
             else
@@ -1350,7 +1377,7 @@ case "$ACT" in
             fi
         else
             ANYFAIL=1
-            if [ "$NL" -gt 1 ]; then
+            if [ "$NROWS" -gt 1 ]; then
                 result_row "$TESTMODEL" "${R_VERDICT:-?}" "" "$R_ELAPSED" \
                            "--" "${R_VERDICT:-?}" "$e"
             else
@@ -1366,9 +1393,10 @@ case "$ACT" in
             fi
         fi
         record_one
+      done
     done
 
-    if [ "$NL" -gt 1 ]; then
+    if [ "$NROWS" -gt 1 ]; then
         echo
         echo "  $T_RECORD : $RECORD"
         echo "  $T_NOQUOTA"

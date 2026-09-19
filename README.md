@@ -71,6 +71,33 @@ Windows · 免安装 · 一个双击 · 一份回执
 
 ---
 
+## 实测结果：原因写在响应头里
+
+工具的「判断依据」里会列出这几行 —— 它们来自 HTTP **响应头**，不是推断：
+
+```
+x-codex-plan-type                     = pro       账号等级
+x-codex-credits-balance               = 0         额度余额
+x-codex-credits-has-credits           = False     没有额度了
+x-codex-active-limit                  = premium   当前限制档
+x-codex-primary-reset-after-seconds   = 582255    还有 ≈6.7 天重置
+```
+
+**这解释了「为什么只有旗舰被降级」：**
+
+| 模型 | 额度状态 | 结果 |
+|---|---|---|
+| `gpt-6-astra`（吃 premium 额度） | **0** | ✗ **被换成 luna** |
+| `gpt-5.6-terra`（不吃） | **0** | ✅ **照常服务** |
+
+**同一个账号、同样的零额度 —— 便宜的正常，旗舰被换。** 缺口正好落在需要那份额度的那一档上。
+
+而那 `582255` 秒 ≈ **6.7 天**，正好对上社区一直在说的 **「7 天算力预算窗口」**。
+
+**这也解释了之前所有的无效尝试**：换 IP、改推理强度、换时区、清缓存 —— 都不是原因，所以全都没用。
+
+---
+
 ## 实测结果：降级是「挑模型」的
 
 在一次完整扫描里（同一个账号、同一天、同一台机器），工具逐个测了目录里的每一个模型：
@@ -705,6 +732,38 @@ Not a configuration problem. Not a network problem. Not an account problem.
 **The model that was paid for never took part in the conversation.**
 
 This tool is that evening's log-reading, packaged so it takes one double-click.
+
+---
+
+## What it found: the reason is in the response headers
+
+The tool's "how this was decided" block prints these lines. They come from HTTP
+**response headers**, not from inference:
+
+```
+x-codex-plan-type                     = pro       account tier
+x-codex-credits-balance               = 0         credits remaining
+x-codex-credits-has-credits           = False     no credits left
+x-codex-active-limit                  = premium   current limit class
+x-codex-primary-reset-after-seconds   = 582255    resets in ~6.7 days
+```
+
+**That explains why only the flagship gets rerouted:**
+
+| Model | Credits | Result |
+|---|---|---|
+| `gpt-6-astra` (needs premium credits) | **0** | ✗ **swapped for luna** |
+| `gpt-5.6-terra` (does not) | **0** | ✅ **served normally** |
+
+Same account, same zero balance - the cheap model is served honestly and the
+expensive one is not. The gap lands exactly on the tier that needs the credits.
+
+And 582255 seconds is **≈6.7 days**, which lines up with the **"7-day compute
+budget window"** the community has been describing for months.
+
+**It also explains every failed fix:** switching IPs, changing reasoning effort,
+changing timezone, clearing caches - none of those were ever the cause, so none
+of them could help.
 
 ---
 

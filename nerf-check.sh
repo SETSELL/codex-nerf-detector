@@ -136,6 +136,10 @@ T_Q_NAME="模型名： "
 T_ASKING="正在通过当前账号发送请求..."
 T_WAIT="请稍候（约 20~60 秒，消耗一次极小额度）"
 T_ACCT_USED="本次使用的账号"
+T_PLAN="账号等级"
+T_LIMIT="当前限制档"
+T_CREDITS="额度余额"
+T_RESET="额度重置倒计时"
 T_REQUESTED="请求的模型"
 T_SERVED="响应里的模型"
 T_NOCAP="（没抓到 —— 可能走了 WebSocket，或日志格式变了）"
@@ -144,6 +148,29 @@ T_YOUASKED="你请求的是"
 T_SEEN="响应里出现的模型"
 T_WANTED="← 你要的"
 T_DOWNGRADE="← 降级款"
+T_EVIDENCE="补充证据（都来自同一份 HTTP 响应）"
+T_HINT="服务器自己说的路由"
+T_HINT_MATCH="（和响应一致）"
+T_HINT_CONFLICT="← ⚠️ 服务器说它路由到这里，响应里却找不到它 —— 同一份 HTTP 响应自相矛盾"
+T_TTFT="首字延迟"
+T_QUEUE="引擎排队"
+T_RTOK="推理 token"
+T_REPORT="检测报告"
+T_G_FULL="满血"
+T_G_DILUTED="掺水"
+T_G_DOWN="降智"
+T_BASIS="判断依据"
+T_B1="请求体里写的是（你要的）"
+T_B2="响应体里返回的是（实际用的）"
+T_B3="服务器自己声明的路由"
+T_B4="账号额度余额"
+T_B5="额度重置倒计时"
+T_CAUSE_CREDITS="账号额度已耗尽 —— 这是旗舰模型被降级的直接原因"
+T_CAUSE_UNKNOWN="额度正常，但请求仍被降级 —— 原因不明，这种情况反而更可疑"
+T_CONC_FULL="结论：你请求的模型正常服务，没有掺假。"
+T_CONC_DILUTED="结论：你请求的模型有参与，但同一个请求里混进了别的模型 —— 不稳定。"
+T_CONC_DOWN="结论：你请求的模型完全没有参与这次回答。"
+T_CONC_UNKNOWN="结论：没能抓到响应内容，无法判断。"
 T_FULL_WARN="⚠️  全模型检测会逐个发请求。"
 T_REPEAT_Q="每个模型测几次？"
 T_REPEAT_1="1 次   快，但只能证明「发生过」，不能证明「每次都是」"
@@ -209,6 +236,10 @@ T_Q_NAME="model name: "
 T_ASKING="Sending a request through the current account..."
 T_WAIT="Please wait (about 20-60 seconds, uses one tiny request)"
 T_ACCT_USED="account used"
+T_PLAN="plan"
+T_LIMIT="active limit"
+T_CREDITS="credits balance"
+T_RESET="credits reset in"
 T_REQUESTED="requested model"
 T_SERVED="response model(s)"
 T_NOCAP="(not captured - websocket path, or the log format changed)"
@@ -217,6 +248,29 @@ T_YOUASKED="you asked for"
 T_SEEN="models seen in the response"
 T_WANTED="<- the one you asked for"
 T_DOWNGRADE="<- downgrade target"
+T_EVIDENCE="additional evidence (all from the same HTTP response)"
+T_HINT="server routing hint"
+T_HINT_MATCH="(matches the response)"
+T_HINT_CONFLICT="<- WARNING: the server says it routed here, but this model is not in the response - the same HTTP response contradicts itself"
+T_TTFT="first token"
+T_QUEUE="engine queue"
+T_RTOK="reasoning tokens"
+T_REPORT="REPORT"
+T_G_FULL="FULL"
+T_G_DILUTED="DILUTED"
+T_G_DOWN="DOWNGRADED"
+T_BASIS="how this was decided"
+T_B1="request body says (what you asked for)"
+T_B2="response body says (what actually served)"
+T_B3="the server's own routing hint"
+T_B4="account credits balance"
+T_B5="credits reset in"
+T_CAUSE_CREDITS="account credits are exhausted - this is the direct cause of the flagship being rerouted"
+T_CAUSE_UNKNOWN="credits look fine, yet the request was still rerouted - cause unknown, and that is the more suspicious case"
+T_CONC_FULL="Conclusion: the model you asked for served you, with nothing else mixed in."
+T_CONC_DILUTED="Conclusion: your model took part, but other models were mixed into the same request - unstable."
+T_CONC_DOWN="Conclusion: the model you asked for took no part in this answer."
+T_CONC_UNKNOWN="Conclusion: nothing could be captured, so no judgement is possible."
 T_FULL_WARN="WARNING: the full sweep sends real requests."
 T_REPEAT_Q="How many times per model?"
 T_REPEAT_1="1 time     fast, but only proves it happened, not that it always happens"
@@ -504,6 +558,41 @@ run_one_model() {
                | sed 's/.*"model":"//; s/"$//' | head -1)
     [ -n "$R_WANTED" ] || R_WANTED="$M"
 
+    # Extra evidence, all read from the same HTTP exchange:
+    #   routing hint  - what the server says it routed to
+    #   ttft / queue  - first-token latency and engine queue time
+    #   reasoning     - reasoning tokens (the 518n-2 clustering signal)
+    R_HINT=$(grep -oE 'x-codex-routing-hint: *model=[0-9a-zA-Z.-]+' "$LOG" 2>/dev/null \
+             | head -1 | sed 's/.*model=//')
+    R_TTFT=$(grep -oE '"first_sampled_message_ttft_ms":[0-9.]+' "$LOG" 2>/dev/null \
+             | head -1 | sed 's/.*://')
+    R_QUEUE=$(grep -oE '"engine_queue_max_ms":[0-9.]+' "$LOG" 2>/dev/null \
+              | head -1 | sed 's/.*://')
+    R_RTOK=$(grep -oE '"reasoning_tokens":[0-9]+' "$LOG" 2>/dev/null \
+             | head -1 | sed 's/.*://')
+    [ -n "$R_RTOK" ] || R_RTOK=$(grep -oE '"first_sampled_message_reasoning_tokens":[0-9]+' "$LOG" 2>/dev/null \
+             | head -1 | sed 's/.*://')
+
+    # Account tier and quota state. These live in the response headers and
+    # explain far more than the model name does: a Pro account with zero
+    # credits is exactly the setup in which the flagship gets rerouted to a
+    # cheap model while everything below it is served honestly.
+    R_PLAN=$(grep -oE '"x-codex-plan-type": *"[^"]*"' "$LOG" 2>/dev/null \
+             | head -1 | sed 's/.*: *"//; s/"$//')
+    R_CREDITS=$(grep -oE '"x-codex-credits-balance": *"[^"]*"' "$LOG" 2>/dev/null \
+             | head -1 | sed 's/.*: *"//; s/"$//')
+    R_HASCRED=$(grep -oE '"x-codex-credits-has-credits": *"[^"]*"' "$LOG" 2>/dev/null \
+             | head -1 | sed 's/.*: *"//; s/"$//')
+    R_LIMIT=$(grep -oE '"x-codex-active-limit": *"[^"]*"' "$LOG" 2>/dev/null \
+             | head -1 | sed 's/.*: *"//; s/"$//')
+    R_RESET=$(grep -oE '"x-codex-primary-reset-after-seconds": *"[^"]*"' "$LOG" 2>/dev/null \
+             | head -1 | sed 's/.*: *"//; s/"$//')
+    if [ -n "$R_RESET" ]; then
+        R_RESET_D=$((R_RESET / 86400))
+        R_RESET_H=$(( (R_RESET % 86400) / 3600 ))
+        R_RESET_TXT="${R_RESET}s (~${R_RESET_D}d ${R_RESET_H}h)"
+    fi
+
     local models
     models=$(grep -oE '"object":"response"[^}]{0,600}' "$LOG" 2>/dev/null \
              | grep -oE '"model":"gpt-[0-9a-zA-Z.-]+"' \
@@ -512,13 +601,24 @@ run_one_model() {
     R_GOT=$(echo "$models" | tr '\n' '+' | sed 's/+$//')
     local cnt; cnt=$(echo "$models" | grep -c .)
 
+    # Four grades, not two. "OK" hides the difference between a model that
+    # answered cleanly and one that answered alongside something else.
     if [ -z "$models" ]; then
         R_MARK="??"; R_VERDICT="UNDETERMINED"
     elif echo "$models" | grep -qx "$R_WANTED"; then
-        if [ "$cnt" -gt 1 ]; then R_MARK="!!"; R_VERDICT="PARTIAL"
-        else R_MARK="OK"; R_VERDICT="OK"; fi
+        if [ "$cnt" -gt 1 ]; then
+            R_MARK="!!"; R_VERDICT="$T_G_DILUTED"
+        else
+            R_MARK="OK"; R_VERDICT="$T_G_FULL"
+        fi
     else
-        R_MARK="XX"; R_VERDICT="DOWNGRADED"
+        R_MARK="XX"; R_VERDICT="$T_G_DOWN"
+        # Explain *why*, when the headers happen to tell us.
+        if [ "$R_HASCRED" = "False" ] || [ "$R_CREDITS" = "0" ]; then
+            R_CAUSE="$T_CAUSE_CREDITS"
+        else
+            R_CAUSE="$T_CAUSE_UNKNOWN"
+        fi
     fi
     return 0
 }
@@ -526,24 +626,46 @@ run_one_model() {
 show_one_result() {
     echo "--------------------------------------------------"
     echo "  $T_ACCT_USED  : ${R_EMAIL:-?}"
+    [ -n "$R_PLAN" ]    && echo "  $T_PLAN       : $R_PLAN"
+    [ -n "$R_LIMIT" ]   && echo "  $T_LIMIT      : $R_LIMIT"
+    [ -n "$R_CREDITS" ] && echo "  $T_CREDITS    : $R_CREDITS   (has-credits=${R_HASCRED:-?})"
+    [ -n "$R_RESET_TXT" ] && echo "  $T_RESET      : $R_RESET_TXT"
     echo
     echo "  $T_REQUESTED  : $R_WANTED"
     echo "  $T_SERVED     : $R_GOT"
     echo "--------------------------------------------------"
     echo
-    echo "  =================================================="
-    echo "    $T_RESULT : [${R_MARK}] ${R_VERDICT}"
+    echo "================================================================================"
+    echo "  $T_RESULT : [${R_MARK}] ${R_VERDICT}"
+    echo "================================================================================"
     echo
-    echo "      $T_YOUASKED : $R_WANTED"
+    echo "  $T_BASIS"
     echo
-    echo "      $T_SEEN :"
-    echo "$R_GOT" | tr '+' '\n' | while read -r m; do
-        [ -n "$m" ] || continue
-        if [ "$m" = "$R_WANTED" ]; then echo "        $m   $T_WANTED"
-        elif [ "$m" = "gpt-5.6-luna" ]; then echo "        $m   $T_DOWNGRADE"
-        else echo "        $m"; fi
-    done
-    echo "  =================================================="
+    echo "    * $T_B1 : $R_WANTED"
+    echo "    * $T_B2 : ${R_GOT:-?}"
+    if [ -n "$R_HINT" ]; then
+        if echo "$R_GOT" | tr '+' '\n' | grep -qx "$R_HINT"; then
+            echo "    * $T_B3 : $R_HINT   $T_HINT_MATCH"
+        else
+            echo "    * $T_B3 : $R_HINT"
+            echo "      $T_HINT_CONFLICT"
+        fi
+    fi
+    [ -n "$R_CREDITS" ]   && echo "    * $T_B4 : $R_CREDITS   (has-credits=${R_HASCRED:-?})"
+    [ -n "$R_RESET_TXT" ] && echo "    * $T_B5 : $R_RESET_TXT"
+    [ -n "$R_TTFT" ]      && echo "    * $T_TTFT   : ${R_TTFT%.*} ms"
+    [ -n "$R_QUEUE" ]     && echo "    * $T_QUEUE  : ${R_QUEUE%.*} ms"
+    [ -n "$R_RTOK" ]      && echo "    * $T_RTOK   : $R_RTOK"
+    echo
+    case "$R_MARK" in
+        OK)   echo "  $T_CONC_FULL" ;;
+        "!!") echo "  $T_CONC_DILUTED" ;;
+        XX)   echo "  $T_CONC_DOWN"
+              [ -n "$R_CAUSE" ] && echo "  $R_CAUSE" ;;
+        ??)   echo "  $T_CONC_UNKNOWN" ;;
+    esac
+    echo
+    echo "================================================================================"
     echo
 }
 

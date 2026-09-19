@@ -15,10 +15,11 @@
 #  so nothing is hard-coded to a particular user.
 # ============================================================
 
-# Switch the console to UTF-8. This MUST NOT live in the .bat: cmd
-# loses its read position when the codepage changes mid-batch and
-# then truncates the following lines.
-chcp.com 65001 >/dev/null 2>&1
+# Windows only: switch the console to UTF-8. This MUST NOT live in the
+# .bat - cmd loses its read position when the codepage changes mid-batch
+# and then truncates the following lines. On macOS/Linux chcp does not
+# exist and the terminal is already UTF-8.
+command -v chcp.com >/dev/null 2>&1 && chcp.com 65001 >/dev/null 2>&1
 
 SELF_DIR="$(cd "$(dirname "$0")" && pwd)"
 
@@ -33,6 +34,71 @@ RECORD="$SELF_DIR/check-records.txt"
 # Seconds allowed per model before the run is abandoned and marked as a
 # timeout. A normal request takes 20-60s.
 PER_MODEL_TIMEOUT="${PER_MODEL_TIMEOUT:-180}"
+
+# ------------------------------------------------------------
+# Portability helpers (Windows Git Bash / macOS / Linux)
+# ------------------------------------------------------------
+
+# GNU stat takes -c, BSD/macOS stat takes -f. Return mtime, or 0.
+file_mtime() {
+    stat -c %Y "$1" 2>/dev/null || stat -f %m "$1" 2>/dev/null || echo 0
+}
+
+# macOS ships no `timeout` unless coreutils is installed (as gtimeout).
+# Fall back to a background job plus a watchdog so the cap still holds.
+run_timed() {
+    local secs="$1"; shift
+    if command -v timeout >/dev/null 2>&1; then
+        timeout "$secs" "$@"
+        return $?
+    fi
+    if command -v gtimeout >/dev/null 2>&1; then
+        gtimeout "$secs" "$@"
+        return $?
+    fi
+    "$@" &
+    local pid=$!
+    ( sleep "$secs"; kill -TERM "$pid" 2>/dev/null ) &
+    local watchdog=$!
+    wait "$pid" 2>/dev/null
+    local rc=$?
+    kill -TERM "$watchdog" 2>/dev/null
+    wait "$watchdog" 2>/dev/null
+    [ "$rc" -ge 128 ] && return 124
+    return "$rc"
+}
+
+# Locate the codex executable. Windows keeps it under a hash-named
+# directory inside the desktop app's bin folder; macOS puts a plain
+# `codex` in one of several bin directories.
+find_codex() {
+    local c newest t
+    c=$(command -v codex 2>/dev/null)
+    if [ -n "$c" ] && [ -x "$c" ]; then echo "$c"; return 0; fi
+
+    # Windows: newest hash directory wins
+    newest=0
+    for f in "$CODEX_DIR"/*/codex.exe; do
+        [ -f "$f" ] || continue
+        t=$(file_mtime "$f")
+        if [ "$t" -gt "$newest" ]; then newest="$t"; c="$f"; fi
+    done
+    if [ -n "$c" ] && [ -f "$c" ]; then echo "$c"; return 0; fi
+
+    # macOS
+    for f in \
+        "$HOME/.local/bin/codex" \
+        "/opt/homebrew/bin/codex" \
+        "/usr/local/bin/codex" \
+        "/Applications/ChatGPT.app/Contents/Resources/codex" \
+        "/Applications/Codex.app/Contents/Resources/codex" \
+        "$HOME/.codex/bin/codex" \
+        ; do
+        [ -x "$f" ] && { echo "$f"; return 0; }
+    done
+
+    return 1
+}
 
 # ============================================================
 # 1. LANGUAGE
@@ -334,17 +400,16 @@ echo
 # ============================================================
 # 2. LOCATE CODEX
 # ============================================================
-CODEX=""
-newest=0
-for f in "$CODEX_DIR"/*/codex.exe; do
-    [ -f "$f" ] || continue
-    t=$(stat -c %Y "$f" 2>/dev/null || echo 0)
-    if [ "$t" -gt "$newest" ]; then newest="$t"; CODEX="$f"; fi
-done
+CODEX=$(find_codex)
 
 if [ -z "$CODEX" ]; then
-    echo "  [ERROR] codex.exe not found / 找不到 codex.exe"
-    echo "          $CODEX_DIR"
+    echo "  [ERROR] codex not found / 找不到 codex"
+    echo
+    echo "  Windows: $CODEX_DIR/<hash>/codex.exe"
+    echo "  macOS  : ~/.local/bin/codex, /opt/homebrew/bin/codex,"
+    echo "           /usr/local/bin/codex, /Applications/ChatGPT.app/..."
+    echo
+    echo "  Install Codex and sign in first. / 请先安装 Codex 并登录。"
     echo -n "$T_EXIT"; read dummy
     exit 1
 fi
@@ -399,7 +464,7 @@ run_one_model() {
     # Hard cap per model. A request normally finishes in 20-60s, but a
     # slow route plus a websocket retry can push it past that, and a whole
     # sweep hanging on one model for ten minutes looks like a crash.
-    RUST_LOG=trace timeout "$PER_MODEL_TIMEOUT" "$CODEX" exec --skip-git-repo-check --model "$M" \
+    RUST_LOG=trace run_timed "$PER_MODEL_TIMEOUT" "$CODEX" exec --skip-git-repo-check --model "$M" \
         "Reply with exactly: OK" < /dev/null > "$LOG" 2>&1
     local rc=$?
 

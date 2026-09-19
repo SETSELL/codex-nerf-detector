@@ -246,13 +246,41 @@ grep -oE '"object":"response"[^}]{0,600}' 日志 \
 
 ## 环境要求
 
-| 项目 | 要求 |
-|---|---|
-| 系统 | Windows（目前只支持 Windows） |
-| 必需 | **Codex 桌面版** 或 **Codex CLI**，并且已登录 |
-| 必需 | **Git for Windows**（提供 `bash.exe`）<br>https://git-scm.com/download/win |
+| 项目 | Windows | macOS |
+|---|---|---|
+| 双击入口 | `run-check.bat` | `run-check.command` |
+| 必需 | **Codex 桌面版** 或 **Codex CLI**，已登录 | 同左 |
+| 必需 | **Git for Windows**（提供 `bash.exe`） | 系统自带 bash，无需额外安装 |
 
 **不需要** Python、Node、管理员权限、额外的运行时。
+
+### macOS 用户注意
+
+**⚠️ macOS 版尚未在真机上验证过。** 逻辑是同一套（检测部分完全一致），启动器和路径按官方文档写的，但**作者手上没有 Mac**。有问题请开 issue。
+
+**首次运行会被 Gatekeeper 拦：**
+
+```bash
+# 去掉隔离标记
+xattr -d com.apple.quarantine "run-check.command"
+
+# 如果提示"没有执行权限"
+chmod +x run-check.command nerf-check.sh
+```
+
+**或者**：右键 `run-check.command` → 打开 → 再点"打开"。
+
+**Codex 的查找位置**（按顺序）：
+
+```
+~/.local/bin/codex                              独立安装器默认位置
+/opt/homebrew/bin/codex                         Homebrew (Apple Silicon)
+/usr/local/bin/codex                            Homebrew (Intel) / 手动安装
+/Applications/ChatGPT.app/Contents/Resources/codex   桌面版内置
+/Applications/Codex.app/Contents/Resources/codex     桌面版内置（旧名）
+```
+
+**用户数据目录一样是 `~/.codex/`** —— Windows 和 macOS 相同。
 
 ---
 
@@ -836,13 +864,45 @@ Two models served one request. That is neither "fine" nor "fully swapped", so it
 
 ## Requirements
 
-| | |
-|---|---|
-| OS | Windows (Windows only for now) |
-| Required | **Codex desktop** or **Codex CLI**, installed and signed in |
-| Required | **Git for Windows** (provides `bash.exe`) — https://git-scm.com/download/win |
+| | Windows | macOS |
+|---|---|---|
+| Launcher | `run-check.bat` | `run-check.command` |
+| Required | **Codex desktop** or **Codex CLI**, signed in | same |
+| Required | **Git for Windows** (provides `bash.exe`) | bash is built in |
 
 No Python, no Node, no admin rights, no extra runtimes.
+
+### macOS notes
+
+**⚠️ The macOS path has NOT been verified on a real Mac.** The detection logic
+is identical; the launcher and paths are written against the documented
+locations, but the author has no Mac to test on. Issues and corrections welcome.
+
+**Gatekeeper will block it on first run:**
+
+```bash
+# clear the quarantine flag
+xattr -d com.apple.quarantine "run-check.command"
+
+# if it complains about permissions
+chmod +x run-check.command nerf-check.sh
+```
+
+**Or:** right-click `run-check.command` → Open → Open.
+
+**Where `codex` is looked for, in order:**
+
+```
+~/.local/bin/codex                              standalone installer default
+/opt/homebrew/bin/codex                         Homebrew (Apple Silicon)
+/usr/local/bin/codex                            Homebrew (Intel) / manual
+/Applications/ChatGPT.app/Contents/Resources/codex   bundled in desktop app
+/Applications/Codex.app/Contents/Resources/codex     bundled (old name)
+```
+
+Whatever `codex` is on `PATH` is tried first.
+
+**User data lives in `~/.codex/`** — same as on Windows.
 
 ---
 

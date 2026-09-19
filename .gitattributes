@@ -6,6 +6,7 @@
 # silently broken by a repo.
 
 *.sh        text eol=lf
+*.command   text eol=lf
 *.bat       text eol=crlf
 *.cmd       text eol=crlf
 *.md        text eol=lf

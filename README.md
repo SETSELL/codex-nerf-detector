@@ -90,21 +90,21 @@ Windows / macOS · 免安装 · 一个双击 · 一份回执
 
 ---
 
-## 实测结果：原因写在响应头里
+## 实测结果：原因写在服务端自己的额度字段里
 
-工具的「判断依据」里会列出这几行 —— 它们来自 HTTP **响应头**，不是推断：
+工具的「判断依据」里会列出这几行 —— 它们来自服务端自己发的数据，不是推断。旧版 Codex 把它们放在 HTTP **响应头**里，现在会放在一条 websocket 消息（`codex.rate_limits`）里，**工具两种都读**：
 
 ```
 x-codex-plan-type                     = pro       账号等级
-x-codex-credits-balance               = 0         额度余额
-x-codex-credits-has-credits           = False     没有额度了
+x-codex-credits-balance               = 0         付费额度余额
+x-codex-credits-has-credits           = False     付费额度用完了
 x-codex-active-limit                  = premium   当前限制档
 x-codex-primary-reset-after-seconds   = 582255    还有 ≈6.7 天重置
 ```
 
 **这解释了「为什么只有旗舰被降级」：**
 
-| 模型 | 额度状态 | 结果 |
+| 模型 | 付费额度 | 结果 |
 |---|---|---|
 | `gpt-6-astra`（吃 premium 额度） | **0** | ✗ **被换成 luna** |
 | `gpt-5.6-terra`（不吃） | **0** | ✅ **照常服务** |
@@ -138,7 +138,7 @@ x-codex-primary-reset-after-seconds   = 582255    还有 ≈6.7 天重置
 
 ## 它检测什么
 
-Codex 的每一次请求，都在同一个 HTTPS 交换里同时包含两份"自称"：
+Codex 的每一次请求，都在同一个 HTTPS 交换里带上几份"自称"——下面两份每次都有：
 
 **第一份，请求体——你想要什么：**
 
@@ -154,7 +154,7 @@ POST https://chatgpt.com/backend-api/codex/responses
  "model":"gpt-5.6-luna","output":[...], ...}
 ```
 
-同一个 HTTP 响应里，还有第三个自称：
+同一个 HTTP 响应里，还出现过第三个自称（**不是每次都有**）：
 
 ```
 x-codex-routing-hint: model=gpt-6-astra
@@ -162,7 +162,9 @@ x-codex-routing-hint: model=gpt-6-astra
 
 **服务器告诉客户端"我路由到 Astra"，然后返回了一个自称 Luna 的响应体。**
 
-这两句话来自同一次交换。总有一句是假的。
+这两句话出自同一次交换。总有一句是假的。
+
+**⚠️ 这条头现在服务端不常发了。** 早先的抓取里有；近期多次抓取（包括确认被降级的那几次）里一次都没出现，而其它 `x-codex-*` 字段都还在。工具检测到就显示这一行，检测不到就跳过——**这不影响主判定**：「你要的模型有没有出现在响应里」靠的是响应体本身，不是这个头。
 
 ---
 
@@ -173,49 +175,80 @@ x-codex-routing-hint: model=gpt-6-astra
           Codex Nerf Detector
 ==================================================
 
-  --- current session ------------------------------
+  --- current session ---
   auth mode    : chatgpt
   account id   : a1b2c3d4...e5f6
-  config model : gpt-6-astra
+  config model : gpt-5.6-terra
+  models available : 5
 
-  --- choose the model to test --------------------
+  --- what do you want to do ---
 
-    1) gpt-6-astra            latest flagship (GPT-6)
-    2) gpt-5.6-sol            previous flagship
-    3) gpt-5.6-terra          previous mid tier
-    4) gpt-5.6-luna           cheap fast tier (common downgrade target)
-    5) gpt-5.3-codex-spark    legacy codex model
-    6) custom (type a model name)
-
-    press Enter = use the config model: gpt-6-astra
+    1) Quick check         - test one model
+    2) Full sweep          - test every model (recommended)
+    3) List models only    - no request, no quota used
+    0) quit
 
   enter a number: 1
 
-  model to test: gpt-6-astra
+  --- choose the model to test --------------------
 
-  Sending a reasoning request through the current account...
+    1) GPT-6-Astra      gpt-6-astra
+       Our most capable model for complex, demanding work.
+    ...
+    6) custom (type a model name)
+
+    press Enter = use the config model: gpt-5.6-terra
+
+  enter a number: 1
+
+  Reasoning effort:
+    1) config level only (high)
+    2) every level - low medium high xhigh max ultra   (6 requests)
+
+  enter a number: 1
+
+  Sending a request through the current account...
   Please wait (reasoning takes 1-3 minutes; this spends real quota).
 
 --------------------------------------------------
-  account used for this request:
-        your-account@example.com
+  account used     : your-account@example.com
+  plan             : pro
+  plan window      : left 99%   (10080 min)
+  active limit     : premium
+  credit balance   : 0   (has-credits=False)
+  credits reset in : 579330s (~6d 16h)
 
-  requested model : gpt-6-astra
-
-  response model(s):
-        gpt-5.6-luna   (x3)
+  model                tier   effort   reasoning    served                     elapsed verdict
+  --------------------------------------------------------------------------------------------------
+  gpt-6-astra          L5     high     215 tok      gpt-5.6-luna              147s    DOWNGRADED
+                              flagship   down 3 tier(s)
 --------------------------------------------------
 
-==================================================
-  RESULT: [XX] DOWNGRADED
+  models seen in the response
+        gpt-5.6-luna         x3      <- downgrade target
 
-        you asked for : gpt-6-astra
+================================================================================
+  RESULT : DOWNGRADED
+================================================================================
 
-        models seen in the response:
-          gpt-5.6-luna   <- downgrade target
+  how this was decided
 
-        Your requested model never appeared - routed elsewhere.
-==================================================
+    * the model you asked for : gpt-6-astra
+    * response body says (what actually served) : gpt-5.6-luna
+    * credit balance : 0   (has-credits=False)
+    * credits reset in : 579330s (~6d 16h)
+    * first token   : 137 ms
+    * engine queue  : 61 ms
+    * reasoning tokens   : 215
+
+  Conclusion: the model you asked for took no part in this answer.
+  the plan window still has room, but the credit balance is 0 - the flagship
+  may draw only on credits, and that is what it is being kept out of
+
+================================================================================
+
+  appended to : .../check-records.txt
+Press Enter to exit...
 ```
 
 ---
@@ -232,16 +265,16 @@ x-codex-routing-hint: model=gpt-6-astra
 
 哈希目录会随版本更新变化，所以脚本每次都取**最新的那一个**。
 
-### 2. 用 trace 级别日志跑一次最小请求
+### 2. 用 trace 级别日志跑一次探测请求
 
 ```bash
 RUST_LOG=trace codex exec --skip-git-repo-check --model gpt-6-astra "Think step by step, then reply with only the answer: the smallest n where n mod 7 = 3, n mod 11 = 5 and n mod 13 = 9"
 ```
 
-- `RUST_LOG=trace` 是**必须的**——不开的话抓不到请求体/响应体
+- `RUST_LOG=trace` 是**必须的**——不开的话抓不到响应体和服务端发的那些字段
 - `--skip-git-repo-check` 也是必须的，否则会报"不在受信任目录"
 - 请求内容是一道需要推理的题（见脚本里的 `PROBE_PROMPT`），会消耗**真实额度**。
-  题目故意出得需要思考，因为推理 token 数就是强度信号——题目太简单，这个信号就永远是 0
+  题目出得需要思考，是为了让「推理」这一列有数字可看——题目太简单的话它永远是 0
 
 ### 3. 从日志里分别提取两份模型名
 
@@ -249,16 +282,20 @@ RUST_LOG=trace codex exec --skip-git-repo-check --model gpt-6-astra "Think step 
 
 ```bash
 # 请求体：客户端发出去了什么
+# ⚠️ 新版 Codex 不再把请求体写进日志，这条通常什么都搜不到。
+#    搜不到时，工具就用你输入的模型名作为「你请求的模型」
 grep -oE 'codex/responses: \{"model":"[^"]*"' 日志 | sed 's/.*"model":"//; s/"$//'
 
-# 响应体：服务端回来了什么
-# ⚠️ 必须先筛出 response 对象，否则会把请求体也搜进来
+# 响应体：服务端回来了什么，以及每个模型出现了几次
+# ⚠️ 必须先筛出 response 对象，否则日志别处的模型名会被一起搜进来
 grep -oE '"object":"response"[^}]{0,600}' 日志 \
   | grep -oE '"model":"gpt-[0-9a-zA-Z.-]+"' \
-  | sed 's/.*"model":"//; s/"$//' | sort -u
+  | sed 's/.*"model":"//; s/"$//' | sort | uniq -c | sort -rn
 ```
 
-**如果省掉第一步过滤，直接全文搜 `"model"`，你会同时抓到请求体的值——然后得出"正常"的错误结论。**
+**`uniq -c` 这一步不能省。**「同一个响应里某个模型出现了几次」本身就是证据，`sort -u` 会把这个次数直接丢掉。
+
+**先筛出 `response` 对象这一步也不能省**，否则日志里别处出现的模型名会被一并搜进来，得出错误结论。
 
 这是这个工具唯一一个真正容易做错的地方。很多同类脚本栽在这里。
 
@@ -284,9 +321,9 @@ grep -oE '"object":"response"[^}]{0,600}' 日志 \
 因为实测中确实出现过这种情况：
 
 ```
-响应体里的模型：
-      gpt-5.6-luna   （出现 2 次）
-      gpt-5.6-sol    （出现 3 次）
+  响应里出现的模型
+        gpt-5.6-luna         x2      ← 降级款
+        gpt-5.6-sol          x3      ← 降级款
 ```
 
 同一个请求里，两个模型都参与了。这既不是"正常"，也不是"完全被换掉"，所以单独标记。
@@ -379,7 +416,7 @@ chmod +x nerf-check-macos.command nerf-check.sh
 
 请求数按目录里现有的 **5 个模型**算。目录里多一个模型，请求数和时间就按比例往上加——**菜单里每一档都会实时标出它自己要发多少次请求、大概多久**，不用自己算。
 
-**每个模型有 300 秒超时上限**，超了会标成 `[--] 超时` 继续下一个，不会卡死在那里。
+**每个模型有 300 秒超时上限**，超了这一档会标成「超时」，然后继续下一个，不会卡死在那里。
 
 ### 为什么要重复测
 
@@ -411,7 +448,7 @@ nerf-check-windows.bat gpt-5.6-sol
 PER_MODEL_TIMEOUT=90 bash nerf-check.sh
 ```
 
-默认 180 秒，可以环境变量覆盖。
+默认 300 秒，可以环境变量覆盖。
 
 ---
 
@@ -442,23 +479,23 @@ PER_MODEL_TIMEOUT=90 bash nerf-check.sh
 # 1. 找到 codex.exe（取最新那个哈希目录）
 ls "$LOCALAPPDATA/OpenAI/Codex/bin"/*/codex.exe
 
-# 2. 开 trace 跑一次最小请求
+# 2. 开 trace 跑一次探测请求
 cd /tmp
 RUST_LOG=trace "<codex.exe>" exec --skip-git-repo-check \
     --model gpt-6-astra "Think step by step, then reply with only the answer: the smallest n where n mod 7 = 3, n mod 11 = 5 and n mod 13 = 9" > /tmp/t.log 2>&1
 
-# 3. 看请求体
+# 3. 看请求体（新版 Codex 不再记录请求体，这条通常为空）
 grep -oE 'codex/responses: \{"model":"[^"]*"' /tmp/t.log
 
-# 4. 看响应体（必须过滤 response 对象）
+# 4. 看响应体实际是什么、每个模型出现了几次（必须过滤 response 对象）
 grep -oE '"object":"response"[^}]{0,600}' /tmp/t.log \
-  | grep -oE '"model":"gpt-[0-9a-zA-Z.-]+"' | sort -u
+  | grep -oE '"model":"gpt-[0-9a-zA-Z.-]+"' | sort | uniq -c | sort -rn
 
-# 5. 看那条自相矛盾的响应头
-grep -oE 'x-codex-routing-hint: model=[a-z0-9.-]+' /tmp/t.log
+# 5. 看服务端有没有给路由提示（有就抓，没有就跳过——现在通常没有）
+grep -oE 'x-codex-routing-hint: *model=[0-9a-zA-Z.-]+' /tmp/t.log
 ```
 
-**如果第 3 步和第 4 步的结果不一样，你就复现了。**
+**如果第 4 步里没有 `gpt-6-astra`，你就复现了** —— 你请求的是它，响应体里却一次都没出现。
 
 ---
 
@@ -486,7 +523,7 @@ A: 本机没装 Codex，或者从没登录过。先在 Codex 里登录，再跑�
 
 **Q: 会不会消耗额度？**
 
-A: 会，而且比以前多。探测请求现在是一道需要推理的题，模型会真的思考，消耗的是可观额度而非"极小额度"——因为推理 token 数就是强度信号，题目太简单就测不出来。题目可以用 `PROBE_PROMPT` 换成你自己的。
+A: 会，而且比以前多。探测请求现在是一道需要推理的题，模型会真的思考，消耗的是可观额度而非"极小额度"。题目出得需要思考，是为了让「推理」这一列有数字可看——题目太简单的话它永远是 0。题目可以用 `PROBE_PROMPT` 换成你自己的。
 
 **Q: 开头的两个问题是什么？**
 
@@ -532,7 +569,7 @@ A: 不能。目前只检测 Codex（桌面版 / CLI）的请求。网页版走�
 
 **2. 依赖 Codex 的日志格式**
 
-如果 `POST .../codex/responses` 这一行，或者 `"object":"response"` 这个结构变了，工具会输出 `[??]`。那时候需要更新正则。
+如果 `POST .../codex/responses` 这一行，或者 `"object":"response"` 这个结构变了，工具会给出「未确定」判定。那时候需要更新正则。
 
 **3. 曾经有更好的信号，现在没了**
 
@@ -612,6 +649,10 @@ A: 不能。目前只检测 Codex（桌面版 / CLI）的请求。网页版走�
 
   Your server told the client it was routing to Astra, and then sent
   a body signed by Luna. Both statements are yours. One is not true.
+
+  That header is no longer present. Recent captures contain it zero
+  times, including runs where the body still signed itself Luna. The
+  only thing that changed is the record of it.
 
   YOU DELETED THE MIRROR, NOT THE BEHAVIOUR
   --------------------------------------------------------------
@@ -708,7 +749,7 @@ A: 不能。目前只检测 Codex（桌面版 / CLI）的请求。网页版走�
 
 **欢迎：**
 
-- 报告日志格式变化（`[??]` 的情况）—— 附上 `nerf-check.sh` 的日志和 Codex 版本
+- 报告日志格式变化（判定为「未确定」的情况）—— 附上 `nerf-check.sh` 的日志和 Codex 版本
 - 其他语言的启动器（macOS 的 `.command`、Linux 的 `.desktop`）
 - 修正事实错误——**如果本文档里任何一条数据有误，请指出，附来源**
 
@@ -774,10 +815,12 @@ This tool is that evening's log-reading, packaged so it takes one double-click.
 
 ---
 
-## What it found: the reason is in the response headers
+## What it found: the reason is in the server's own quota fields
 
-The tool's "how this was decided" block prints these lines. They come from HTTP
-**response headers**, not from inference:
+The tool's "how this was decided" block prints these lines. They come from the
+server's own data, not from inference. Older Codex builds put them in HTTP
+**response headers**; current builds send a `codex.rate_limits` websocket
+message instead. **Both are read:**
 
 ```
 x-codex-plan-type                     = pro       account tier
@@ -827,7 +870,7 @@ One account. The cheap models are served honestly. The expensive one is swapped 
 
 ## What it detects
 
-Every Codex request carries three separate claims inside a single HTTPS exchange.
+A Codex request carries its claims inside a single HTTPS exchange — two of them always, a third only sometimes.
 
 **1. The request body — what you asked for:**
 
@@ -843,13 +886,15 @@ POST https://chatgpt.com/backend-api/codex/responses
  "model":"gpt-5.6-luna","output":[...], ...}
 ```
 
-**3. A header in the same exchange:**
+**3. A header in the same exchange — but only sometimes:**
 
 ```
 x-codex-routing-hint: model=gpt-6-astra
 ```
 
 The server tells the client it is routing to Astra, and then returns a body that signs itself Luna. Both statements come from the same response. One of them is not true.
+
+**⚠️ The server no longer sends this header reliably.** Earlier captures had it; several recent ones — including confirmed-downgraded runs — had it zero times, while every other `x-codex-*` field was still present. The tool prints the line when it finds it and skips it when it does not, which **does not affect the main verdict**: whether the model you asked for appears in the response is decided by the response body, not by this header.
 
 ---
 
@@ -860,49 +905,80 @@ The server tells the client it is routing to Astra, and then returns a body that
           Codex Nerf Detector
 ==================================================
 
-  --- current session ------------------------------
+  --- current session ---
   auth mode    : chatgpt
   account id   : a1b2c3d4...e5f6
-  config model : gpt-6-astra
+  config model : gpt-5.6-terra
+  models available : 5
 
-  --- choose the model to test --------------------
+  --- what do you want to do ---
 
-    1) gpt-6-astra            latest flagship (GPT-6)
-    2) gpt-5.6-sol            previous flagship
-    3) gpt-5.6-terra          previous mid tier
-    4) gpt-5.6-luna           cheap fast tier (common downgrade target)
-    5) gpt-5.3-codex-spark    legacy codex model
-    6) custom (type a model name)
-
-    press Enter = use the config model: gpt-6-astra
+    1) Quick check         - test one model
+    2) Full sweep          - test every model (recommended)
+    3) List models only    - no request, no quota used
+    0) quit
 
   enter a number: 1
 
-  model to test: gpt-6-astra
+  --- choose the model to test --------------------
 
-  Sending a reasoning request through the current account...
+    1) GPT-6-Astra      gpt-6-astra
+       Our most capable model for complex, demanding work.
+    ...
+    6) custom (type a model name)
+
+    press Enter = use the config model: gpt-5.6-terra
+
+  enter a number: 1
+
+  Reasoning effort:
+    1) config level only (high)
+    2) every level - low medium high xhigh max ultra   (6 requests)
+
+  enter a number: 1
+
+  Sending a request through the current account...
   Please wait (reasoning takes 1-3 minutes; this spends real quota).
 
 --------------------------------------------------
-  account used for this request:
-        your-account@example.com
+  account used     : your-account@example.com
+  plan             : pro
+  plan window      : left 99%   (10080 min)
+  active limit     : premium
+  credit balance   : 0   (has-credits=False)
+  credits reset in : 579330s (~6d 16h)
 
-  requested model : gpt-6-astra
-
-  response model(s):
-        gpt-5.6-luna   (x3)
+  model                tier   effort   reasoning    served                     elapsed verdict
+  --------------------------------------------------------------------------------------------------
+  gpt-6-astra          L5     high     215 tok      gpt-5.6-luna              147s    DOWNGRADED
+                              flagship   down 3 tier(s)
 --------------------------------------------------
 
-==================================================
-  RESULT: [XX] DOWNGRADED
+  models seen in the response
+        gpt-5.6-luna         x3      <- downgrade target
 
-        you asked for : gpt-6-astra
+================================================================================
+  RESULT : DOWNGRADED
+================================================================================
 
-        models seen in the response:
-          gpt-5.6-luna   <- downgrade target
+  how this was decided
 
-        Your requested model never appeared - routed elsewhere.
-==================================================
+    * the model you asked for : gpt-6-astra
+    * response body says (what actually served) : gpt-5.6-luna
+    * credit balance : 0   (has-credits=False)
+    * credits reset in : 579330s (~6d 16h)
+    * first token   : 137 ms
+    * engine queue  : 61 ms
+    * reasoning tokens   : 215
+
+  Conclusion: the model you asked for took no part in this answer.
+  the plan window still has room, but the credit balance is 0 - the flagship
+  may draw only on credits, and that is what it is being kept out of
+
+================================================================================
+
+  appended to : .../check-records.txt
+Press Enter to exit...
 ```
 
 ---
@@ -919,13 +995,13 @@ No magic. Four steps.
 
 The hash directory changes with every version, so the script always takes **the newest one**.
 
-### 2. Run one minimal request with tracing on
+### 2. Run one probe request with tracing on
 
 ```bash
 RUST_LOG=trace codex exec --skip-git-repo-check --model gpt-6-astra "Think step by step, then reply with only the answer: the smallest n where n mod 7 = 3, n mod 11 = 5 and n mod 13 = 9"
 ```
 
-- `RUST_LOG=trace` is **mandatory** — without it the request and response bodies are not logged
+- `RUST_LOG=trace` is **mandatory** — without it the response body and the server's own fields are not logged
 - `--skip-git-repo-check` is also mandatory, otherwise Codex refuses to run outside a trusted directory
 - The request is a reasoning task. Its quota cost is real, not negligible
 
@@ -935,16 +1011,22 @@ RUST_LOG=trace codex exec --skip-git-repo-check --model gpt-6-astra "Think step 
 
 ```bash
 # request body: what the client sent
+# NOTE: current Codex builds no longer log the request body, so this
+# usually finds nothing. When it does, the tool falls back to using the
+# model name you passed as "the model you asked for"
 grep -oE 'codex/responses: \{"model":"[^"]*"' log | sed 's/.*"model":"//; s/"$//'
 
-# response body: what the server returned
-# NOTE: you MUST filter for response objects first, or the request body is matched too
+# response body: what the server returned, and how often each model appeared
+# NOTE: you MUST filter for response objects first, or model names from
+# elsewhere in the log are matched too
 grep -oE '"object":"response"[^}]{0,600}' log \
   | grep -oE '"model":"gpt-[0-9a-zA-Z.-]+"' \
-  | sed 's/.*"model":"//; s/"$//' | sort -u
+  | sed 's/.*"model":"//; s/"$//' | sort | uniq -c | sort -rn
 ```
 
-**Skip that first filter and a naive `grep '"model"'` matches the request body too — and you will report a false "OK".**
+**The `uniq -c` step is not optional.** How many times a given model turned up in the response is evidence in its own right, and `sort -u` throws that count away.
+
+**The `response` filter is not optional either** — without it, model names from elsewhere in the log are matched too and you will report a wrong answer.
 
 This is the single easiest way to get this wrong. Several similar scripts have.
 
@@ -972,9 +1054,9 @@ escape codes. Set `NO_COLOR=1` to turn colour off entirely.
 Because this was observed in practice:
 
 ```
-response model(s):
-      gpt-5.6-luna   (x2)
-      gpt-5.6-sol    (x3)
+  models seen in the response
+        gpt-5.6-luna         x2      <- downgrade target
+        gpt-5.6-sol          x3      <- downgrade target
 ```
 
 Two models served one request. That is neither "fine" nor "fully swapped", so it gets its own label.
@@ -1062,8 +1144,8 @@ Request counts assume the 5 models currently in the catalog. Add a model and
 both scale with it — **the menu prints the request count and the time next to
 each option**, so there is nothing to work out by hand.
 
-**Each model has a 300-second cap.** If one stalls it is marked `[--] timed out`
-and the sweep moves on, rather than appearing to hang.
+**Each model has a 300-second cap.** If one stalls it is marked "timed out" and
+the sweep moves on, rather than appearing to hang.
 
 ### Why the repeat count matters
 
@@ -1090,7 +1172,7 @@ above — use at least 3.**
 PER_MODEL_TIMEOUT=90 bash nerf-check.sh
 ```
 
-Default is 180 seconds.
+Default is 300 seconds.
 
 ### Option 2 — pass the model
 
@@ -1130,23 +1212,24 @@ Nothing here is hidden. You can do the whole thing by hand:
 # 1. find codex.exe (newest hash directory)
 ls "$LOCALAPPDATA/OpenAI/Codex/bin"/*/codex.exe
 
-# 2. run one minimal request with tracing
+# 2. run one probe request with tracing
 cd /tmp
 RUST_LOG=trace "<codex.exe>" exec --skip-git-repo-check \
     --model gpt-6-astra "Think step by step, then reply with only the answer: the smallest n where n mod 7 = 3, n mod 11 = 5 and n mod 13 = 9" > /tmp/t.log 2>&1
 
-# 3. the request body
+# 3. the request body (current Codex no longer logs it, so this is usually empty)
 grep -oE 'codex/responses: \{"model":"[^"]*"' /tmp/t.log
 
-# 4. the response body (filter for response objects)
+# 4. the response body: what actually served, and how often each model appeared
+#    (filter for response objects)
 grep -oE '"object":"response"[^}]{0,600}' /tmp/t.log \
-  | grep -oE '"model":"gpt-[0-9a-zA-Z.-]+"' | sort -u
+  | grep -oE '"model":"gpt-[0-9a-zA-Z.-]+"' | sort | uniq -c | sort -rn
 
-# 5. the self-contradicting header
-grep -oE 'x-codex-routing-hint: model=[a-z0-9.-]+' /tmp/t.log
+# 5. the server's routing hint, if it sends one (usually it does not, now)
+grep -oE 'x-codex-routing-hint: *model=[0-9a-zA-Z.-]+' /tmp/t.log
 ```
 
-**If step 3 and step 4 disagree, you have reproduced it.**
+**If `gpt-6-astra` is not in step 4, you have reproduced it** — you asked for it and it never appeared in the response.
 
 ---
 
@@ -1172,7 +1255,7 @@ Codex is not installed, or has never been signed in on this machine.
 
 **Does it cost quota?**
 
-Yes, and more than it used to. The probe is now a reasoning task, so the model actually thinks and the run costs real quota rather than a negligible amount — the reasoning-token count is the strength signal, and a trivial prompt never produces one. Swap the task with `PROBE_PROMPT`.
+Yes, and more than it used to. The probe is now a reasoning task, so the model actually thinks and the run costs real quota rather than a negligible amount. The task is a reasoning one so the "reasoning" column has a number in it at all - with a trivial prompt it is always 0. Swap the task with `PROBE_PROMPT`.
 
 **What are the two questions at the start?**
 
@@ -1218,7 +1301,7 @@ The detection logic is portable; the launcher is not. macOS users should look at
 
 **2. Depends on Codex's log format**
 
-If the `POST .../codex/responses` line or the `"object":"response"` structure changes, the tool reports `[??]` and the regexes need updating.
+If the `POST .../codex/responses` line or the `"object":"response"` structure changes, the tool returns UNDETERMINED and the regexes need updating.
 
 **3. A better signal used to exist**
 
@@ -1274,7 +1357,7 @@ This names the faster model used on the **safety buffering** path. It has nothin
 
 **Welcome:**
 
-- Reports of log-format changes (the `[??]` case) — include the `nerf-check.sh` log and your Codex version
+- Reports of log-format changes (the UNDETERMINED case) — include the `nerf-check.sh` log and your Codex version
 - Launchers for other platforms (macOS `.command`, Linux `.desktop`)
 - Corrections — **if any figure in this document is wrong, say so and cite the source**
 

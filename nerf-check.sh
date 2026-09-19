@@ -200,7 +200,7 @@ T_WANTED="← 你要的"
 T_DOWNGRADE="← 降级款"
 T_HINT="服务器自己说的路由"
 T_HINT_MATCH="（和响应一致）"
-T_HINT_CONFLICT="← ⚠️ 服务器说它路由到这里，响应里却找不到它 —— 同一份 HTTP 响应自相矛盾"
+T_HINT_CONFLICT="← ⚠️ 这个头和响应内容对不上：头里点名了这个模型，响应里却没有它"
 T_TTFT="首字延迟"
 T_QUEUE="引擎排队"
 T_RTOK="推理 token"
@@ -324,7 +324,7 @@ T_WANTED="<- the one you asked for"
 T_DOWNGRADE="<- downgrade target"
 T_HINT="server routing hint"
 T_HINT_MATCH="(matches the response)"
-T_HINT_CONFLICT="<- WARNING: the server says it routed here, but this model is not in the response - the same HTTP response contradicts itself"
+T_HINT_CONFLICT="<- WARNING: this header and the response disagree - the header names this model, the response does not contain it"
 T_TTFT="first token"
 T_QUEUE="engine queue"
 T_RTOK="reasoning tokens"
@@ -1194,7 +1194,7 @@ case "$ACT" in
     echo
     echo "  $T_EFFORT_Q"
     echo "    1) $T_EFFORT_ONE (${CFGEFFORT:-?})"
-    echo "    2) $T_EFFORT_ALL —— $EFFORTS   ($NLEV $T_EFFORT_TIMES)"
+    echo "    2) $T_EFFORT_ALL: $EFFORTS   ($NLEV $T_EFFORT_TIMES)"
     echo
     echo -n "  $T_Q_ASK"; read ES
     case "$ES" in

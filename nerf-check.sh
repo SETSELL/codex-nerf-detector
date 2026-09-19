@@ -252,6 +252,12 @@ T_LIMITS="这个结果不能证明什么"
 T_LIM1="它只说明接口自述的是哪个模型，不说明实际回答的权重是什么"
 T_LIM2="服务端自述的模型名不能当作「没被换」的证据 —— 换模型的本质就是说没换"
 T_LIM3="单次结果不算结论。要下判断，请重复多次、并换账号对比"
+T_DIAG="为什么会「未确定」"
+T_DIAG_LOG="日志文件"
+T_DIAG_SIZE="日志大小"
+T_DIAG_BYTES="字节"
+T_DIAG_HINT="日志里没有响应体。常见原因：RUST_LOG 没生效（Codex 没写 trace 日志）、走了未预期的新传输方式、或请求中途被中断。"
+T_DIAG_SHARE="报 issue 时请附上这份日志，并写明系统和 Codex 版本 —— 只写「显示未确定」查不出原因。"
 T_FULL_WARN="⚠️  全模型检测会逐个发请求。"
 T_REPEAT_Q="每个模型测几次？"
 T_REPEAT_1="1 次    快，但只能证明「发生过」，不能证明「每次都是」"
@@ -382,6 +388,12 @@ T_LIMITS="What this does not prove"
 T_LIM1="It shows what the interface says about itself, not which weights answered"
 T_LIM2="A server naming the model you asked for is not evidence it served it - a silent swap is precisely a claim that nothing was swapped"
 T_LIM3="One run is not a conclusion. Repeat it, and compare across accounts"
+T_DIAG="Why this came out UNDETERMINED"
+T_DIAG_LOG="log file"
+T_DIAG_SIZE="log size"
+T_DIAG_BYTES="bytes"
+T_DIAG_HINT="The log holds no response body. Usual causes: RUST_LOG did not take effect so Codex never wrote trace output, the response came over a transport this script does not know, or the request was cut off partway."
+T_DIAG_SHARE="If you report this, attach that log and say which OS and Codex version - \"it shows UNDETERMINED\" on its own cannot be diagnosed."
 T_FULL_WARN="WARNING: the full sweep sends real requests."
 T_REPEAT_Q="How many times per model?"
 T_REPEAT_1="1 time     fast, but only proves it happened, not that it always happens"
@@ -797,13 +809,21 @@ run_probe() {
     # Piped or redirected: no animation, no escape sequences in the output.
     if [ ! -t 1 ]; then
         t0=$(date +%s)
-        RUST_LOG=trace "${cmd[@]}" < /dev/null > "$LOG" 2>&1
+        # Exported rather than written as a "VAR=x cmd" prefix: that form
+        # in front of an array expansion is parsed differently by older
+        # bash, and macOS still ships bash 3.2. If the variable failed to
+        # take, codex would run without trace logging, the log would hold
+        # no response body, and every run would come back 未确定 with
+        # nothing to explain why.
+        export RUST_LOG=trace
+        "${cmd[@]}" < /dev/null > "$LOG" 2>&1
         rc=$?
         R_ELAPSED=$(( $(date +%s) - t0 ))
         return "$rc"
     fi
 
-    RUST_LOG=trace "${cmd[@]}" < /dev/null > "$LOG" 2>&1 &
+    export RUST_LOG=trace
+    "${cmd[@]}" < /dev/null > "$LOG" 2>&1 &
     pid=$!
     t0=$(date +%s)
 
@@ -1141,7 +1161,18 @@ show_one_result() {
         "!!") echo "  $T_CONC_DILUTED" ;;
         XX)   echo "  $T_CONC_DOWN"
               [ -n "$R_CAUSE" ] && echo "  $R_CAUSE" ;;
-        ??)   echo "  $T_CONC_UNKNOWN" ;;
+        ??)   echo "  $T_CONC_UNKNOWN"
+              # A bare "undetermined" is a dead end for whoever hit it -
+              # and for anyone trying to help them. Say what to look at.
+              echo
+              echo "  --- $T_DIAG ---"
+              echo
+              echo "    - $T_DIAG_LOG: $LOG"
+              if [ -f "$LOG" ]; then
+                  echo "    - $T_DIAG_SIZE: $(wc -c < "$LOG" 2>/dev/null | tr -d ' ') $T_DIAG_BYTES"
+              fi
+              echo "    - $T_DIAG_HINT"
+              echo "    - $T_DIAG_SHARE" ;;
     esac
     echo
     # Printed every time, not only on a weak result. A tool whose whole

@@ -1,18 +1,20 @@
 #!/bin/bash
 # ============================================================
-#  Codex Nerf Detector  v2.0
+#  Codex Nerf Detector
 #
 #  Detects when Codex serves a request with a weaker model than the
 #  one that was asked for.
 #
-#  v2.0 adds:
-#    - language selection (Chinese / English)
-#    - model list read from ~/.codex/models_cache.json (no request)
-#    - one-click full sweep across every model
-#    - a summary table at the end
+#  Asks every model a reasoning task, then reads back what the response
+#  says actually served it, how many reasoning tokens it spent, what the
+#  account's two quota pools look like, and what that adds up to.
 #
 #  All paths derive from $HOME and from this script's own location,
 #  so nothing is hard-coded to a particular user.
+#
+#  Both launchers - nerf-check-windows.bat and nerf-check-macos.command -
+#  only locate a bash and run this file. All behaviour lives here, so the
+#  two platforms cannot drift apart.
 # ============================================================
 
 # Windows only: switch the console to UTF-8. This MUST NOT live in the
@@ -232,7 +234,7 @@ T_G_DILUTED="掺水"
 T_G_DOWN="降智"
 T_G_UNDET="未确定"
 T_BASIS="判断依据"
-T_B1="请求体里写的是（你要的）"
+T_B1="你请求的模型"
 T_B2="响应体里返回的是（实际用的）"
 T_B3="服务器自己声明的路由"
 T_B4="付费额度余额"
@@ -356,7 +358,7 @@ T_G_DILUTED="DILUTED"
 T_G_DOWN="DOWNGRADED"
 T_G_UNDET="UNDETERMINED"
 T_BASIS="how this was decided"
-T_B1="request body says (what you asked for)"
+T_B1="the model you asked for"
 T_B2="response body says (what actually served)"
 T_B3="the server's own routing hint"
 T_B4="credit balance"
@@ -814,7 +816,7 @@ result_header() {
     pad "$T_TIER" 6;      printf " "
     pad "$T_EFFORT" 8;    printf " "
     pad "$T_STRENGTH" 12; printf " "
-    pad "$T_GOT" 20;      printf " "
+    pad "$T_GOT" 26;      printf " "
     pad "$T_ELAPSED" 7;   printf " "
     printf "%s\n" "$T_VERDICT"
     echo "  --------------------------------------------------------------------------------------------------"
@@ -832,7 +834,7 @@ result_row() {
     pad "$rank" 6;              printf " "
     pad "${ef:--}" 8;           printf " "
     pad "${rtok:-?} $T_TOK" 12; printf " "
-    pad "${got:--}" 20;         printf " "
+    pad "${got:--}" 26;         printf " "
     pad "${el:-?}$T_SEC" 7;     printf " "
     # Last column, so colour codes here cannot disturb any padding.
     printf "%s%s%s\n" "$(grade_colour "$gd")" "${vd:--}" "$C_OFF"
@@ -1048,22 +1050,33 @@ run_one_model() {
     return 0
 }
 
+# Label and value, with the colons lined up. printf's %-Ns counts
+# characters, and these labels are Chinese - "账号等级" and "额度重置倒计时"
+# are both four to seven characters but nearly twice that in columns, so
+# padding by character count leaves the colons ragged.
+acct_line() {
+    printf "  "
+    pad "$1" 17
+    printf ": %s\n" "$2"
+}
+
 show_one_result() {
     local pq
     echo "--------------------------------------------------"
-    echo "  $T_ACCT_USED  : ${R_EMAIL:-?}"
-    [ -n "$R_PLAN" ]    && echo "  $T_PLAN       : $R_PLAN"
+    acct_line "$T_ACCT_USED" "${R_EMAIL:-?}"
+    [ -n "$R_PLAN" ] && acct_line "$T_PLAN" "$R_PLAN"
     # The plan window is the pool a reader will check first, so it is shown
     # before the credit balance rather than after it.
     case "$R_USEDPCT" in
         ''|*[!0-9]*) ;;
         *) pq="$T_REMAIN $((100 - R_USEDPCT))%"
            [ -n "$R_WINDOW" ] && pq="$pq   ($R_WINDOW $T_MIN)"
-           echo "  $T_PLANQUOTA  : $pq" ;;
+           acct_line "$T_PLANQUOTA" "$pq" ;;
     esac
-    [ -n "$R_LIMIT" ]   && echo "  $T_LIMIT      : $R_LIMIT"
-    [ -n "$R_CREDITS" ] && echo "  $T_CREDITS    : $R_CREDITS   (has-credits=${R_HASCRED:-?})"
-    [ -n "$R_RESET_TXT" ] && echo "  $T_RESET      : $R_RESET_TXT"
+    [ -n "$R_LIMIT" ] && acct_line "$T_LIMIT" "$R_LIMIT"
+    [ -n "$R_CREDITS" ] && acct_line "$T_CREDITS" \
+        "$R_CREDITS   (has-credits=${R_HASCRED:-?})"
+    [ -n "$R_RESET_TXT" ] && acct_line "$T_RESET" "$R_RESET_TXT"
     echo
     result_header
     result_row "$R_WANTED" "$R_GOT" "$R_RTOK" "$R_ELAPSED" "$R_MARK" "$R_VERDICT" "$PROBE_EFFORT"

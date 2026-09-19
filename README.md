@@ -71,6 +71,25 @@ Windows · 免安装 · 一个双击 · 一份回执
 
 ---
 
+## 实测结果：降级是「挑模型」的
+
+在一次完整扫描里（同一个账号、同一天、同一台机器），工具逐个测了目录里的每一个模型：
+
+| 模型 | 你请求的 | 实际用的 | 判定 |
+|---|---|---|---|
+| **`gpt-6-astra`**（最贵旗舰） | gpt-6-astra | **gpt-5.6-luna** | **✗ 被降级** |
+| `gpt-5.6-sol` | gpt-5.6-sol | gpt-5.6-sol | ✓ 正常 |
+| `gpt-5.6-terra` | gpt-5.6-terra | gpt-5.6-terra | ✓ 正常 |
+| `gpt-5.6-luna` | gpt-5.6-luna | gpt-5.6-luna | ✓ 正常 |
+
+**这不是"模型能力不够"，是专门针对最高那一档。**
+
+同一个账号，便宜的模型照常给你，最贵的那个被换成了廉价的替代品——而且界面上的选择器、发票上的条目，都还写着原来那个名字。
+
+**这个结论单次检测是看不出来的。** 只测一个模型，你只知道"我被换了"；把全部模型测一遍，你才知道**换的是哪一档**。
+
+---
+
 ## 它检测什么
 
 Codex 的每一次请求，都在同一个 HTTPS 交换里同时包含两份"自称"：
@@ -241,13 +260,30 @@ grep -oE '"object":"response"[^}]{0,600}' 日志 \
 
 ### 方式一：双击（推荐）
 
-双击 `run-check.bat`，然后：
+双击 `run-check.bat`，然后按提示走：
 
-1. 回答两个问题
-2. 看它显示当前登录的账号
-3. 从菜单里选要测的模型（或输入序号 `0` 用配置里的默认值，或输入 `6` 自己填）
-4. 等 20~60 秒
-5. 看判定
+```
+1. 选语言             中文 / English
+2. 回答两个问题        （答"是"到第一个会看到一封给 OpenAI 的信，按 Q 可直接退出）
+3. 看账号信息          认证方式、账号 ID、配置的模型、目录里有几个模型
+
+4. 选做什么：
+     1) 单模型检测       —— 选一个模型测一次
+     2) 全模型一键检测   —— 逐个测完所有模型（推荐）
+     3) 只看模型清单     —— 不发请求，不消耗额度
+```
+
+**模型清单是从 `~/.codex/models_cache.json` 读的**，不需要发请求就能看到目录里有哪些模型、各自是什么定位。
+
+### 关于耗时
+
+| 模式 | 耗时 |
+|---|---|
+| 单模型 | 20~60 秒 |
+| 只看清单 | 瞬间，**不消耗额度** |
+| **全模型**（6 个） | **约 3~15 分钟**（一个模型一个模型地测） |
+
+**每个模型有 180 秒超时上限**，超了会标成 `[--] timed out` 继续下一个，不会卡死在那里。
 
 ### 方式二：带参数
 
@@ -257,6 +293,14 @@ run-check.bat gpt-5.6-sol
 ```
 
 跳过菜单，直接测指定模型。适合批量测或者做快捷方式。
+
+### 设置超时时间
+
+```bash
+PER_MODEL_TIMEOUT=90 bash nerf-check.sh
+```
+
+默认 180 秒，可以环境变量覆盖。
 
 ---
 
@@ -619,6 +663,25 @@ This tool is that evening's log-reading, packaged so it takes one double-click.
 
 ---
 
+## What it found: the downgrade picks its targets
+
+In one full sweep — same account, same day, same machine — every model in the catalog was tested:
+
+| Model | Asked for | Actually used | Verdict |
+|---|---|---|---|
+| **`gpt-6-astra`** (top flagship) | gpt-6-astra | **gpt-5.6-luna** | **✗ downgraded** |
+| `gpt-5.6-sol` | gpt-5.6-sol | gpt-5.6-sol | ✓ fine |
+| `gpt-5.6-terra` | gpt-5.6-terra | gpt-5.6-terra | ✓ fine |
+| `gpt-5.6-luna` | gpt-5.6-luna | gpt-5.6-luna | ✓ fine |
+
+**This is not a capacity problem. It is aimed at the top tier specifically.**
+
+One account. The cheap models are served honestly. The expensive one is swapped for a cheaper substitute — while the picker and the invoice both still say the original name.
+
+**A single test cannot show this.** Test one model and you only learn "I was rerouted". Test all of them and you learn **which tier they rerouted**.
+
+---
+
 ## What it detects
 
 Every Codex request carries three separate claims inside a single HTTPS exchange.
@@ -787,13 +850,41 @@ No Python, no Node, no admin rights, no extra runtimes.
 
 ### Option 1 — double-click
 
-Double-click `run-check.bat`, then:
+Double-click `run-check.bat` and follow the prompts:
 
-1. Answer two questions
-2. Read the account it shows
-3. Pick a model from the menu (`0` uses your config default, `6` lets you type one)
-4. Wait 20–60 seconds
-5. Read the verdict
+```
+1. Choose your language     Chinese / English
+2. Answer two questions     (answer yes to the first and you get a short
+                             open letter to OpenAI first - Q quits at no cost)
+3. Read the session info    auth mode, account id, config model, model count
+
+4. Choose what to do:
+     1) Quick check         - test one model
+     2) Full sweep          - test every model (recommended)
+     3) List models only    - no request, no quota used
+```
+
+**The model list comes from `~/.codex/models_cache.json`** — the catalog can be
+read without sending anything.
+
+### How long it takes
+
+| Mode | Time |
+|---|---|
+| One model | 20–60 seconds |
+| List only | instant, **no quota used** |
+| **Full sweep** (6 models) | **roughly 3–15 minutes** (sequential) |
+
+**Each model has a 180-second cap.** If one stalls it is marked `[--] timed out`
+and the sweep moves on, rather than appearing to hang.
+
+### Overriding the timeout
+
+```bash
+PER_MODEL_TIMEOUT=90 bash nerf-check.sh
+```
+
+Default is 180 seconds.
 
 ### Option 2 — pass the model
 
